@@ -1,0 +1,8 @@
+This is fully based on: https://github.com/zhouhaoyi/Informer2020
+
+Credit for this work goes to:
+https://github.com/zhouhaoyi
+
+The intention is to extend this work to allow for different types input.
+To this end the following changes are being implemented:
+- The batching process is adapted to split batches based on a new parameter
