@@ -3,7 +3,7 @@ from functools import partial
 
 
 # TODO for this to work we need to work with shuffle = false, and sort on category_id, check!
-#  so sorting on: patient_id and then date?
+#  so sorting on: person_id and then date?
 # TODO check if dimensions are accurate (annotated below but also: is one input a list of timestamps)
 def categorical_collate(batch, person_id_index):
     """
