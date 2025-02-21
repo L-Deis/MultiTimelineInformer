@@ -1,7 +1,6 @@
 import torch
 from functools import partial
 
-
 # TODO for this to work we need to work with shuffle = false, and sort on category_id, check!
 #  so sorting on: person_id and then date?
 # TODO check if dimensions are accurate (annotated below but also: is one input a list of timestamps)
@@ -80,8 +79,3 @@ def categorical_collate(batch, person_id_index):
     valid_outputs = torch.stack(valid_outputs)
 
     return valid_inputs, valid_outputs
-
-
-# Example usage:
-# Assuming `person_id_index` is the index of the person_id column in the data tensors.
-collate_fn = partial(categorical_collate, person_id_index=8)  # Assuming person_id is the 9th column (index 8)

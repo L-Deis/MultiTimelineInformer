@@ -1,0 +1,62 @@
+model: informer  # model of experiment, options: [informer, informerstack, informerlight(TBD)]
+
+data: MEWS  # data
+# root_path: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path of data file
+# root_path: /container/data # root path of data file
+root_path: Z:/Datasets/AI-EWS
+data_path: vitals_data.csv  # data file #timeseries_for_informer.csv
+features: MS  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
+target: HR  # target feature in S or MS task
+freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
+checkpoints: ./informer_checkpoints  # location of model checkpoints
+
+# TODO: currently, the value to predict is fetched from the next row
+seq_len: 96    # input sequence length of the Informer encoder (dim 1)
+label_len: 48  # start-token length of the Informer decoder (dim 2)
+pred_len: 12   # prediction sequence length (dim 3). Informer decoder input = concat[start token series(label_len), zero padding series(pred_len)]
+# Informer decoder input: concat[start token series(label_len), zero padding series(pred_len)]
+
+enc_in: 8  # encoder input size
+dec_in: 8  # decoder input size
+c_out: 8   # output size
+factor: 5  # ProbSparse attention factor
+d_model: 512  # dimension of the model
+n_heads: 8  # number of attention heads
+e_layers: 2  # number of encoder layers
+d_layers: 2  # number of decoder layers
+d_ff: 2048  # dimension of FCN in the model
+dropout: 0.05  # dropout rate
+attn: prob  # attention type in encoder, options: [prob, full]
+embed: timeF  # time features encoding, options: [timeF, fixed, learned]
+activation: gelu  # activation function
+distil: true  # whether to use distilling in the encoder
+output_attention: false  # whether to output attention in the encoder
+mix: true
+padding: 0
+
+# s_layers is often used for InformerStack or advanced configs (optional)
+s_layers: "3,2,1"
+
+# Training configs
+batch_size: 363
+learning_rate: 0.0002
+loss: mse
+lradj: type1
+use_amp: false  # whether to use automatic mixed precision training
+
+num_workers: 0
+itr: 1
+train_epochs: 3
+patience: 3
+des: exp
+do_predict: false #TODO: what
+inverse: false #TODO: what
+
+# GPU configs
+use_gpu: true
+gpu: 0
+
+use_multi_gpu: false
+devices: "0,1,2,3"
+
+cols: null  # specify certain cols if needed; default null means "use all"

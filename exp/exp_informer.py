@@ -1,7 +1,7 @@
-from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
+from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS
 from exp.exp_basic import Exp_Basic
 from models.model import Informer, InformerStack
-from multi_timeline2 import categorical_collate
+from exp.multi_timeline_2 import categorical_collate
 
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
@@ -15,6 +15,8 @@ from torch.utils.data import DataLoader
 
 import os
 import time
+
+from functools import partial
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -69,6 +71,7 @@ class Exp_Informer(Exp_Basic):
             'WTH':Dataset_Custom,
             'ECL':Dataset_Custom,
             'Solar':Dataset_Custom,
+            'MEWS':Dataset_MEWS,
             'custom':Dataset_Custom,
         }
         Data = data_dict[self.args.data]
@@ -94,14 +97,14 @@ class Exp_Informer(Exp_Basic):
             cols=args.cols
         )
         print(flag, len(data_set))
-        categorical_collate = partial(categorical_collate, person_id_index=8)  # Assuming person_id is the 9th column (index 8)
+        categorical_collate_fn = partial(categorical_collate, person_id_index=8)  # Assuming person_id is the 9th column (index 8)
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
             shuffle=shuffle_flag,
             num_workers=args.num_workers,
             drop_last=drop_last,
-            collate_fn = categorical_collate)
+            collate_fn = categorical_collate_fn)
 
         return data_set, data_loader
 
