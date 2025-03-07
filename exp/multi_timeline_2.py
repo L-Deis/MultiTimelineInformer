@@ -1,10 +1,13 @@
 import torch
+import pandas as pd
+import numpy as np
 from functools import partial
+from utils.timefeatures import time_features
 
 # TODO for this to work we need to work with shuffle = false, and sort on category_id, check!
 #  so sorting on: person_id and then date?
 # TODO check if dimensions are accurate (annotated below but also: is one input a list of timestamps)
-def categorical_collate(batch, person_id_index):
+def categorical_collate(batches, timeenc, freq):
     """
     Collate function that ensures all timesteps within each input and output are consistent with the same person_id.
     Handles cases where inputs switch between person_ids and salvages the part that matches the output.
@@ -18,64 +21,100 @@ def categorical_collate(batch, person_id_index):
         partially zero-padded inputs for salvageable sequences
         or all zeros for inconsistent data.
     """
-    if len(batch) == 0:  # Early exit for empty batch
-        return torch.tensor([]), torch.tensor([])
+    if len(batches) == 0:  # Early exit for empty batch
+        return torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([])
 
     # Initialize containers for valid inputs and outputs
     valid_inputs = []
     valid_outputs = []
+    valid_ids = []
 
-    for inputs, outputs in batch:
+    for seq_x, seq_y, seq_x_mark, seq_y_mark, seq_x_id, seq_y_id in batches:
         # Dimensions of inputs and outputs
         # inputs: (seq_len, features)
         # outputs: (pred_len, features)
 
         # Extract person_ids for inputs and outputs
-        input_person_ids = inputs[:, person_id_index]  # Shape: (seq_len,)
-        output_person_ids = outputs[:, person_id_index]  # Shape: (pred_len,)
+        input_person_ids = seq_x_id # Shape: (seq_x_len,2)
+        output_person_ids = seq_y_id # Shape: (seq_y_len,2)
+
+        #DEBUG: Print the shapes of each seq
+        # print("--- SEQ SHAPES ---")
+        # print(f"seq_x: {seq_x.shape}")
+        # print(f"seq_y: {seq_y.shape}")
+        # print(f"seq_x_mark: {seq_x_mark.shape}")
+        # print(f"seq_y_mark: {seq_y_mark.shape}")
+        # print(f"input_person_ids: {input_person_ids.shape}")
+        # print(f"output_person_ids: {output_person_ids.shape}")
 
         # Check if person_id is consistent within inputs and outputs
-        input_consistent = torch.all(input_person_ids == input_person_ids[0])  # True if all input IDs match
-        output_consistent = torch.all(output_person_ids == output_person_ids[0])  # True if all output IDs match
-        input_output_match = input_person_ids[-1] == output_person_ids[0]
+        input_consistent = np.all(input_person_ids[:,0] == input_person_ids[0,0])  # True if all input IDs match
+        output_consistent = np.all(output_person_ids[:,0] == output_person_ids[0,0])  # True if all output IDs match
+        input_output_match = input_person_ids[-1,0] == output_person_ids[0,0]
 
         if input_consistent and output_consistent and input_output_match:
             # Case 1: Fully consistent input and output
-            valid_inputs.append(inputs)
-            valid_outputs.append(outputs)
+            valid_inputs.append((seq_x, seq_x_mark))
+            valid_outputs.append((seq_y, seq_y_mark))
+            valid_ids.append((seq_x_id, seq_y_id))
         elif output_consistent and input_output_match:
             # Case 2: Outputs are consistent, but inputs transition between person_ids
             # The input does contain at least 1 datapoint for the person_id in the output
             # Replace inconsistent parts of inputs with zeros
 
             # Identify the person_id from outputs
-            target_person_id = output_person_ids[0]
+            target_person_id = output_person_ids[0,0]
 
             # Create a mask for valid input rows
-            valid_mask = input_person_ids == target_person_id  # Shape: (seq_len,)
+            valid_mask = input_person_ids[:,0] == target_person_id  # Shape: (seq_len,)
 
             # Zero out rows in inputs where person_id doesn't match outputs
-            salvageable_inputs = inputs.clone()  # Clone to avoid modifying original data
+            salvageable_inputs = seq_x.copy()  # Clone to avoid modifying original data
             salvageable_inputs[~valid_mask] = 0  # Replace invalid rows with zeros
 
-            valid_inputs.append(salvageable_inputs)
-            valid_outputs.append(outputs)
+            #Fill invalid rows from seq_y_mark with new fake datetime values (every 1 min) and then use time features to get the mark
+            timeline = seq_x_id[:,1].copy()
+            timeline = pd.DataFrame({'date': pd.to_datetime(timeline)})
+
+            #Find the first valid timestamp
+            # first_valid = timeline[valid_mask][0] #deosnt work for pandas
+            first_valid = timeline.loc[valid_mask, 'date'].iloc[0] #works for pandas
+            #Get index of first valid timestamp
+            first_valid_index = np.where(valid_mask)[0][0]
+            
+            #1 minutes in pandas datetime
+            delta_time = pd.Timedelta(minutes=1) #TODO: Make it a parameter that can change based on arguments
+            #Fix every invalid timestamps based on their index, 1 min offset each, based on the first valid timestamp
+            math_vec = np.arange(-first_valid_index, 0)
+            timeline.loc[~valid_mask, 'date'] = first_valid + delta_time * math_vec
+            
+            #Get the time features
+            salvageable_inputs_mark = time_features(timeline, timeenc, freq)
+
+            #Salvageable ids
+            salvageable_x_id = input_person_ids.copy()
+            salvageable_x_id[~valid_mask, 0] = seq_y_id[0,0] #Replace invalid ids with the target id
+            salvageable_x_id[~valid_mask, 1] = timeline.loc[~valid_mask, 'date'].values #Replace invalid timestamps with the fixed ones
+
+            #Append the mark to the inputs
+            valid_inputs.append((salvageable_inputs, salvageable_inputs_mark))
+            valid_outputs.append((seq_y, seq_y_mark))
+            valid_ids.append((salvageable_x_id, seq_y_id))
+
         else:
-            # Case 3: Fully inconsistent input or output
-            # Replace both inputs and outputs with zero-padded placeholders
-            seq_len, input_features = inputs.shape
-            pred_len, output_features = outputs.shape
-
-            padded_inputs = torch.zeros((seq_len, input_features))  # Shape: (seq_len, features)
-            padded_outputs = torch.zeros((pred_len, output_features))  # Shape: (pred_len, features)
-
-            valid_inputs.append(padded_inputs)
-            valid_outputs.append(padded_outputs)
+            # Case 3: output has inconsistencies
+            # Unsalvageable data; the difference between predicted output and real output will never match
+            # Remove this batch
+            pass
 
     # Stack the valid inputs and outputs into tensors
-    # valid_inputs: (batch_size, seq_len, features)
-    # valid_outputs: (batch_size, pred_len, features)
-    valid_inputs = torch.stack(valid_inputs)
-    valid_outputs = torch.stack(valid_outputs)
+    # Reconstruction of the original shape
+    valid_seq_x = torch.stack([torch.tensor(seq[0]) if isinstance(seq[0], np.ndarray) else seq[0] for seq in valid_inputs])
+    valid_seq_x_mark = torch.stack([torch.tensor(seq[1]) if isinstance(seq[1], np.ndarray) else seq[1] for seq in valid_inputs])
+    valid_seq_y = torch.stack([torch.tensor(seq[0]) if isinstance(seq[0], np.ndarray) else seq[0] for seq in valid_outputs])
+    valid_seq_y_mark = torch.stack([torch.tensor(seq[1]) if isinstance(seq[1], np.ndarray) else seq[1] for seq in valid_outputs])
+    valid_seq_x_id = np.stack([seq[0] for seq in valid_ids])
+    valid_seq_y_id = np.stack([seq[1] for seq in valid_ids])
 
-    return valid_inputs, valid_outputs
+    return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark
+    # return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark, valid_seq_x_id, valid_seq_y_id

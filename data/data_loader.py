@@ -219,7 +219,7 @@ class Dataset_MEWS(Dataset):
         # df_raw = pd.read_csv(os.path.join(self.root_path,
         #                                   self.data_path))
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path), nrows=1000) #DEBUG: Read only the first 1000 lines
+                                          self.data_path), nrows=100000) #DEBUG: Read only the first 1000 lines
         
         # --- MEWS Specific pre-processing ---
         #Print all columns names
@@ -264,8 +264,10 @@ class Dataset_MEWS(Dataset):
             #df_raw columns without admission and date_time
             cols_data = list(df_raw.columns); cols_data.remove('admission'); cols_data.remove('date')
             df_data = df_raw[cols_data]
+            df_id = df_raw[['admission', 'date']]
         elif self.features=='S':
             df_data = df_raw[[self.target]]
+            df_id = df_raw[['admission', 'date']]
 
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
@@ -277,6 +279,9 @@ class Dataset_MEWS(Dataset):
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
+
+        #Save ID data
+        self.data_id = df_id.values[border1:border2]
 
         self.data_x = data[border1:border2]
         if self.inverse:
@@ -299,7 +304,10 @@ class Dataset_MEWS(Dataset):
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        seq_x_id = self.data_id[s_begin:s_end]
+        seq_y_id = self.data_id[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark, seq_x_id, seq_y_id
     
     def __len__(self):
         return len(self.data_x) - self.seq_len- self.pred_len + 1

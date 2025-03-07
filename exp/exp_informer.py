@@ -81,7 +81,7 @@ class Exp_Informer(Exp_Basic):
             shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
         elif flag=='pred':
             shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.detail_freq
-            Data = Dataset_Pred
+            # Data = Dataset_Pred # DEBUG: Disable for now
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
         data_set = Data(
@@ -97,7 +97,7 @@ class Exp_Informer(Exp_Basic):
             cols=args.cols
         )
         print(flag, len(data_set))
-        categorical_collate_fn = partial(categorical_collate, person_id_index=8)  # Assuming person_id is the 9th column (index 8)
+        categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)  # Assuming person_id is the 9th column (index 8)
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
