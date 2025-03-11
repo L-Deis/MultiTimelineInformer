@@ -4,8 +4,13 @@ data: MEWS  # data
 # root_path: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path of data file
 # root_path: /container/data # root path of data file
 root_path: Z:/Datasets/AI-EWS
-data_path: vitals_data.csv  # data file #timeseries_for_informer.csv
-features: MS  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
+# data_path: vitals_data.csv  
+data_path:
+  vitals: vitals_data.csv # data file #timeseries_for_informer.csv
+  mappings: mapping_everything.csv  # mapping data file
+  admissions: admissions_data_prepped.csv  # static data file
+  antibiotics: filtered_antibiotics.csv  # infections data file
+features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
 target: HR  # target feature in S or MS task
 freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
 checkpoints: ./informer_checkpoints  # location of model checkpoints

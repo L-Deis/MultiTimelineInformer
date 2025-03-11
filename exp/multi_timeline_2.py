@@ -28,8 +28,10 @@ def categorical_collate(batches, timeenc, freq):
     valid_inputs = []
     valid_outputs = []
     valid_ids = []
+    valid_statics = []
+    valid_antibiotics = []
 
-    for seq_x, seq_y, seq_x_mark, seq_y_mark, seq_x_id, seq_y_id in batches:
+    for seq_x, seq_y, seq_x_mark, seq_y_mark, seq_x_id, seq_y_id, seq_static, seq_antibiotics in batches:
         # Dimensions of inputs and outputs
         # inputs: (seq_len, features)
         # outputs: (pred_len, features)
@@ -57,6 +59,8 @@ def categorical_collate(batches, timeenc, freq):
             valid_inputs.append((seq_x, seq_x_mark))
             valid_outputs.append((seq_y, seq_y_mark))
             valid_ids.append((seq_x_id, seq_y_id))
+            valid_statics.append(seq_static)
+            valid_antibiotics.append(seq_antibiotics)
         elif output_consistent and input_output_match:
             # Case 2: Outputs are consistent, but inputs transition between person_ids
             # The input does contain at least 1 datapoint for the person_id in the output
@@ -100,11 +104,12 @@ def categorical_collate(batches, timeenc, freq):
             valid_inputs.append((salvageable_inputs, salvageable_inputs_mark))
             valid_outputs.append((seq_y, seq_y_mark))
             valid_ids.append((salvageable_x_id, seq_y_id))
-
+            valid_statics.append(seq_static)
+            valid_antibiotics.append(seq_antibiotics)
         else:
             # Case 3: output has inconsistencies
             # Unsalvageable data; the difference between predicted output and real output will never match
-            # Remove this batch
+            # Remove patient from this batch
             pass
 
     # Stack the valid inputs and outputs into tensors
@@ -115,6 +120,8 @@ def categorical_collate(batches, timeenc, freq):
     valid_seq_y_mark = torch.stack([torch.tensor(seq[1]) if isinstance(seq[1], np.ndarray) else seq[1] for seq in valid_outputs])
     valid_seq_x_id = np.stack([seq[0] for seq in valid_ids])
     valid_seq_y_id = np.stack([seq[1] for seq in valid_ids])
+    valid_statics = np.stack(valid_statics)
+    valid_antibiotics = np.stack(valid_antibiotics)
 
-    return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark
-    # return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark, valid_seq_x_id, valid_seq_y_id
+    # return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark
+    return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark, valid_seq_x_id, valid_seq_y_id, valid_statics, valid_antibiotics
