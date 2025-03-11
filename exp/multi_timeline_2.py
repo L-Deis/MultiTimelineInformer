@@ -120,8 +120,17 @@ def categorical_collate(batches, timeenc, freq):
     valid_seq_y_mark = torch.stack([torch.tensor(seq[1]) if isinstance(seq[1], np.ndarray) else seq[1] for seq in valid_outputs])
     valid_seq_x_id = np.stack([seq[0] for seq in valid_ids])
     valid_seq_y_id = np.stack([seq[1] for seq in valid_ids])
-    valid_statics = np.stack(valid_statics)
-    valid_antibiotics = np.stack(valid_antibiotics)
+    # valid_statics = np.stack(valid_statics)
+    # valid_antibiotics = np.stack(valid_antibiotics)
+    # valid_statics = torch.stack([torch.tensor(seq) if isinstance(seq, np.ndarray) else seq for seq in valid_statics])
+    valid_statics = torch.stack([
+        seq if isinstance(seq, torch.Tensor) else torch.tensor(seq)
+        for seq in valid_statics
+    ])
+    valid_antibiotics = torch.stack([
+        seq if isinstance(seq, torch.Tensor) else torch.tensor(seq)
+        for seq in valid_antibiotics
+    ])
 
     # return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark
     return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark, valid_seq_x_id, valid_seq_y_id, valid_statics, valid_antibiotics

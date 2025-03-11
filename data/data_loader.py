@@ -220,10 +220,10 @@ class Dataset_MEWS(Dataset):
     def __read_data__(self):
         # --- VITALS ---
         self.scaler = StandardScaler()
-        # df_raw = pd.read_csv(os.path.join(self.root_path,
-        #                                   self.data_path))
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.path_vitals), nrows=100000) #DEBUG: Read only the first 1000 lines
+                                          self.data_path))
+        # df_raw = pd.read_csv(os.path.join(self.root_path,
+        #                                   self.path_vitals), nrows=1000) #DEBUG: Read only the first 1000 lines
         
 
         #DEBUG: Load mappings df, keep only the stay_id in df_raw that are in df_mappings

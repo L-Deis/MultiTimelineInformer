@@ -112,26 +112,64 @@ class Exp_Informer(Exp_Basic):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
     
-    def _select_criterion(self):
-        criterion =  nn.MSELoss()
-        return criterion
+    # def _select_criterion(self):
+    #     if self.args.loss == 'mse':
+    #         criterion = nn.MSELoss()
+    #     elif self.args.loss == 'l1':
+    #         criterion = nn.L1Loss()
+    #     elif self.args.loss == 'crossentropy':
+    #         criterion = nn.CrossEntropyLoss()
+    #     return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def select_criterion(self, criterion_name):
+        if criterion_name == 'mse':
+            criterion = nn.MSELoss()
+        elif criterion_name == 'l1':
+            criterion = nn.L1Loss()
+        elif criterion_name == 'crossentropy':
+            criterion = nn.CrossEntropyLoss()
+        else:
+            criterion = nn.MSELoss()
+        return criterion
+    
+    def compute_loss(self, continuous_preds, continuous_targets, category_logits, category_targets, alpha=1.0):
+        # Regression loss (MSE)
+        loss_mse = self.criterion(continuous_preds, continuous_targets)
+
+        # Classification loss (Cross Entropy)
+        loss_ce = self.criterion_category(category_logits, category_targets)
+
+        # Total loss (weighted sum)
+        loss = loss_ce + alpha * loss_mse
+
+        # return loss
+        return loss, {'loss_ce': loss_ce.item(), 'loss_mse': loss_mse.item()}
+
+    # def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_data, vali_loader):
         self.model.eval()
         total_loss = []
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(vali_loader):
-            pred, true = self._process_one_batch(
-                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            loss = criterion(pred.detach().cpu(), true.detach().cpu())
+        total_loss_dict = {"loss_mse": [], "loss_ce": []}
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(vali_loader):
+            pred, true_y, true_antibio = self._process_one_batch(
+                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+            # loss = criterion(pred.detach().cpu(), true.detach().cpu())
+            loss, loss_dict = self.compute_loss(pred[:,:,:-1].detach().cpu(), true_y.detach().cpu(), pred[:,:,-1].detach().cpu(), true_antibio.detach().cpu(), alpha=self.args.loss_alpha)
             total_loss.append(loss)
+            total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
+            total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
         total_loss = np.average(total_loss)
+        total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"])
+        total_loss_dict["loss_ce"] = np.average(total_loss_dict["loss_ce"])
         self.model.train()
-        return total_loss
+        return total_loss, total_loss_dict
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag = 'train')
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
+        self.criterion = self.select_criterion(self.args.loss)
+        self.criterion_category = self.select_criterion(self.args.loss_category)
 
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -143,7 +181,7 @@ class Exp_Informer(Exp_Basic):
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
         
         model_optim = self._select_optimizer()
-        criterion =  self._select_criterion()
+        # criterion =  self._select_criterion()
 
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
@@ -154,17 +192,18 @@ class Exp_Informer(Exp_Basic):
             
             self.model.train()
             epoch_time = time.time()
-            for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader):
+            for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
                 iter_count += 1
                 
                 model_optim.zero_grad()
-                pred, true = self._process_one_batch(
-                    train_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-                loss = criterion(pred, true)
+                pred, true_y, true_antibio = self._process_one_batch(
+                    train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+                loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
                 train_loss.append(loss.item())
                 
                 if (i+1) % 100==0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    print("\tloss_mse: {2:.7f} | loss_ce {2:.7f}".format(loss_dict['loss_mse'], loss_dict['loss_ce']))
                     speed = (time.time()-time_now)/iter_count
                     left_time = speed*((self.args.train_epochs - epoch)*train_steps - i)
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
@@ -181,11 +220,14 @@ class Exp_Informer(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            # vali_loss = self.vali(vali_data, vali_loader, criterion)
+            # test_loss = self.vali(test_data, test_loader, criterion)
+            vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader)
+            test_loss, test_loss_dict = self.vali(test_data, test_loader)
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+            print("Vali Loss: loss_mse: {0:.7f} | loss_ce: {1:.7f}".format(vali_loss_dict['loss_mse'], vali_loss_dict['loss_ce']))
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -198,19 +240,21 @@ class Exp_Informer(Exp_Basic):
         
         return self.model
 
-    def test(self, setting):
+    def test(self, setting): #TODO: Make it use correct losses lol
         test_data, test_loader = self._get_data(flag='test')
-        
+        self.criterion = self.select_criterion(self.args.loss)
+        self.criterion_category = self.select_criterion(self.args.loss_category)
+
         self.model.eval()
         
         preds = []
         trues = []
         
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(test_loader):
-            pred, true = self._process_one_batch(
-                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            preds.append(pred.detach().cpu().numpy())
-            trues.append(true.detach().cpu().numpy())
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(test_loader):
+            pred, true_y, true_antibio = self._process_one_batch(
+                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+            preds.append(pred.detach().cpu().numpy()[:,:,:-1])
+            trues.append(true_y.detach().cpu().numpy())
 
         preds = np.array(preds)
         trues = np.array(trues)
@@ -235,7 +279,9 @@ class Exp_Informer(Exp_Basic):
 
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
-        
+        self.criterion = self.select_criterion(self.args.loss)
+        self.criterion_category = self.select_criterion(self.args.loss_category)
+
         if load:
             path = os.path.join(self.args.checkpoints, setting)
             best_model_path = path+'/'+'checkpoint.pth'
@@ -245,9 +291,9 @@ class Exp_Informer(Exp_Basic):
         
         preds = []
         
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(pred_loader):
-            pred, true = self._process_one_batch(
-                pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(pred_loader):
+            pred, true_y, true_antibio = self._process_one_batch(
+                pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             preds.append(pred.detach().cpu().numpy())
 
         preds = np.array(preds)
@@ -262,19 +308,31 @@ class Exp_Informer(Exp_Basic):
         
         return
 
-    def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
+    def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static=None, batch_antibio=None):
         batch_x = batch_x.float().to(self.device)
         batch_y = batch_y.float()
 
         batch_x_mark = batch_x_mark.float().to(self.device)
         batch_y_mark = batch_y_mark.float().to(self.device)
 
+        if batch_static is not None: batch_static = batch_static.float().to(self.device)
+        if batch_antibio is not None: batch_antibio = batch_antibio.float()
+
+        #Concatenate batch_y (shape: (batch_size, len, 6)) with batch_antibio (shape: (batch_size, len))
+        if batch_antibio is not None:
+            batch_label = torch.cat([batch_y, batch_antibio.unsqueeze(-1)], dim=-1)
+        else:
+            batch_label = batch_y
+        #Resulting shape: (batch_size, len, 7)
+
         # decoder input
         if self.args.padding==0:
-            dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
+            dec_inp = torch.zeros([batch_label.shape[0], self.args.pred_len, batch_label.shape[-1]]).float()
         elif self.args.padding==1:
-            dec_inp = torch.ones([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
-        dec_inp = torch.cat([batch_y[:,:self.args.label_len,:], dec_inp], dim=1).float().to(self.device)
+            dec_inp = torch.ones([batch_label.shape[0], self.args.pred_len, batch_label.shape[-1]]).float()
+        dec_inp = torch.cat([batch_label[:,:self.args.label_len,:], dec_inp], dim=1).float().to(self.device)
+        #Resulting shape: (batch_size, label_len + pred_len, feature_dim)
+
         # encoder - decoder
         if self.args.use_amp:
             with torch.cuda.amp.autocast():
@@ -291,5 +349,6 @@ class Exp_Informer(Exp_Basic):
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0
         batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
+        batch_antibio = batch_antibio[:,-self.args.pred_len:].to(self.device) if batch_antibio is not None else None
 
-        return outputs, batch_y
+        return outputs, batch_y, batch_antibio
