@@ -53,6 +53,13 @@ class Exp_Informer(Exp_Basic):
                 self.args.output_attention,
                 self.args.distil,
                 self.args.mix,
+                # --- Added Conditionning ---
+                self.args.condition,
+                self.args.n_cond_num_in,
+                self.args.n_cond_num_out,
+                self.args.n_cond_cat_in,
+                self.args.n_cond_cat_out,
+                # ---
                 self.device
             ).float()
         
@@ -338,14 +345,14 @@ class Exp_Informer(Exp_Basic):
         if self.args.use_amp:
             with torch.cuda.amp.autocast():
                 if self.args.output_attention:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)[0]
                 else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)
         else:
             if self.args.output_attention:
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)[0]
             else:
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)
         if self.args.inverse:
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0

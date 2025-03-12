@@ -107,3 +107,24 @@ class DataEmbedding(nn.Module):
         x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark)
         
         return self.dropout(x)
+    
+
+class ConditionEmbedding(nn.Module):
+    def __init__(self, n_cond_num_in, n_cond_num_out, n_cond_cat_in, n_cond_cat_out):
+        super(ConditionEmbedding, self).__init__()
+
+        self.n_cond_num_in = n_cond_num_in
+        self.n_cond_num_out = n_cond_num_out
+        self.n_cond_cat_in = [int(n) for n in n_cond_cat_in.split(',')]
+        self.n_cond_cat_out = [int(n) for n in n_cond_cat_out.split(',')]
+        self.n_in = n_cond_num_in + sum(self.n_cond_cat_in)
+        self.n_out = n_cond_num_out + sum(self.n_cond_cat_out)
+
+        self.cond_num = nn.Linear(n_cond_num_in, n_cond_num_out) # numerical features
+        self.cond_cat = nn.ModuleList([nn.Embedding(n_in, n_out) for n_in, n_out in zip(self.n_cond_cat_in, self.n_cond_cat_out)]) # categorical features
+
+    def forward(self, x): # x: all the first values are numerical features, and the last values are categorical features
+        x_num = self.cond_num(x[:, :self.n_cond_num_in])
+        x_cat = torch.cat([cond(x[:, self.n_cond_num_in+i].long()) for i, cond in enumerate(self.cond_cat)], dim=-1)
+
+        return torch.cat([x_num, x_cat], dim=-1) #Shape: (batch_size, n_cond_num_out+sum(n_cond_cat_out))

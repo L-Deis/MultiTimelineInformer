@@ -221,9 +221,9 @@ class Dataset_MEWS(Dataset):
         # --- VITALS ---
         self.scaler = StandardScaler()
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.path_vitals))
+                                        #   self.path_vitals))
         # df_raw = pd.read_csv(os.path.join(self.root_path,
-        #                                   self.path_vitals), nrows=1000) #DEBUG: Read only the first 1000 lines
+                                          self.path_vitals), nrows=1000) #DEBUG: Read only the first 1000 lines
         
 
         #DEBUG: Load mappings df, keep only the stay_id in df_raw that are in df_mappings
@@ -364,8 +364,27 @@ class Dataset_MEWS(Dataset):
         df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(int)
         df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(int)
 
+        # For each categorical feature in static_data, it needs to be mapped to [0,1,2,...,n-1] where n is the number of unique categories
+        N_NUM = 1 #Number of numerical features, placed before each categorical feature, every following feature is categorical
+        #-> Skip 'stay_id' and n_num afterwards;
+        #Get columns names
+        cols_static = list(df_admissions.columns)
+        cols_static.remove('stay_id')
+        cols_static = cols_static[N_NUM:]
+        for col in cols_static:
+            #Get unique values
+            unique_values = df_admissions[col].unique()
+            #Get n unique and print it
+            n_unique = len(unique_values)
+            print(f"Unique categories for {col}: {n_unique}")
+            #Map the unique values to a list of integers
+            mapping = dict(zip(unique_values, range(n_unique)))
+            #Map the column to the new values
+            df_admissions[col] = df_admissions[col].map(mapping)
+
         # self.data_static = Dict: key=[stay_id], value=[age, is_man, dbc_dept, dbc_diag]
         self.data_static = df_admissions.set_index('stay_id').T.to_dict('list')
+
         # --- STATIC END ---
 
         # --- ANTIBIOTICS ---

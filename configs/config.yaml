@@ -39,6 +39,13 @@ output_attention: false  # whether to output attention in the encoder
 mix: true
 padding: 0
 
+#Conditionning
+condition: true #Whether to condition the model on the static variables
+n_cond_num_in: 1 #How many numerical variables to condition on
+n_cond_num_out: 2 #Embedding size for numerical variables
+n_cond_cat_in: "2,10000,10000" #How many categories for each categorical variable
+n_cond_cat_out: "4,16,16" #Embedding size for each categorical variable
+
 # s_layers is often used for InformerStack or advanced configs (optional)
 s_layers: "3,2,1"
 
