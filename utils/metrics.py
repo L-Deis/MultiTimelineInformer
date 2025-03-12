@@ -23,6 +23,15 @@ def MAPE(pred, true):
 def MSPE(pred, true):
     return np.mean(np.square((pred - true) / true))
 
+def CEL(pred,true):
+    # Clip predicted values to avoid log(0) issues
+    epsilon = 1e-9
+    pred = np.clip(pred, epsilon, 1 - epsilon)
+
+    # Compute binary cross-entropy loss
+    loss = -np.mean(true * np.log(pred) + (1 - true) * np.log(1 - pred))
+    return loss
+
 def metric(pred, true):
     mae = MAE(pred, true)
     mse = MSE(pred, true)

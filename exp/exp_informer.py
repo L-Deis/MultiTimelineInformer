@@ -4,7 +4,7 @@ from models.model import Informer, InformerStack
 from exp.multi_timeline_2 import categorical_collate
 
 from utils.tools import EarlyStopping, adjust_learning_rate
-from utils.metrics import metric
+from utils.metrics import metric, CEL
 
 import numpy as np
 
@@ -247,33 +247,43 @@ class Exp_Informer(Exp_Basic):
 
         self.model.eval()
         
-        preds = []
-        trues = []
+        preds_y = []
+        trues_y = []
+        preds_antibio = []
+        trues_antibio = []
         
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(test_loader):
             pred, true_y, true_antibio = self._process_one_batch(
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
-            preds.append(pred.detach().cpu().numpy()[:,:,:-1])
-            trues.append(true_y.detach().cpu().numpy())
+            preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
+            trues_y.append(true_y.detach().cpu().numpy())
+            preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
+            trues_antibio.append(true_antibio.detach().cpu().numpy())
 
-        preds = np.array(preds)
-        trues = np.array(trues)
-        print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
+        preds_y = np.array(preds_y)
+        trues_y = np.array(trues_y)
+        preds_antibio = np.array(preds_antibio)
+        trues_antibio = np.array(trues_antibio)
+        print('test shape:', preds_y.shape, trues_y.shape)
+        preds_y = preds_y.reshape(-1, preds_y.shape[-2], preds_y.shape[-1])
+        trues_y = trues_y.reshape(-1, trues_y.shape[-2], trues_y.shape[-1])
+        print('test shape:', preds_y.shape, trues_y.shape)
 
         # result save
         folder_path = './results/' + setting +'/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
+        mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
         print('mse:{}, mae:{}'.format(mse, mae))
+        crossentropy = CEL(preds_antibio, trues_antibio)
+        print('crossentropy antibiotics:{}'.format(crossentropy))
 
-        np.save(folder_path+'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path+'pred.npy', preds)
-        np.save(folder_path+'true.npy', trues)
+        np.save(folder_path+'metrics.npy', np.array([mae, mse, rmse, mape, mspe, crossentropy]))
+        np.save(folder_path+'pred_y.npy', preds_y)
+        np.save(folder_path+'true_y.npy', trues_y)
+        np.save(folder_path+'pred_antibios.npy', preds_antibio)
+        np.save(folder_path+'true_antibios.npy', trues_antibio)
 
         return
 
