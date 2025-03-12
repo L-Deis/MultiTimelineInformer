@@ -221,7 +221,7 @@ class Dataset_MEWS(Dataset):
         # --- VITALS ---
         self.scaler = StandardScaler()
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+                                          self.path_vitals))
         # df_raw = pd.read_csv(os.path.join(self.root_path,
         #                                   self.path_vitals), nrows=1000) #DEBUG: Read only the first 1000 lines
         
