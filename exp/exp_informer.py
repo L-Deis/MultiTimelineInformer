@@ -274,6 +274,7 @@ class Exp_Informer(Exp_Basic):
         np.save(folder_path+'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path+'pred.npy', preds)
         np.save(folder_path+'true.npy', trues)
+        #TODO: Save values for loss_mse and loss_ce
 
         return
 
