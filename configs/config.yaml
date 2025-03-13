@@ -14,7 +14,7 @@ features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict
 target: HR  # target feature in S or MS task
 freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
 checkpoints_path: /informer_checkpoints  # location of model checkpoints
-logging_path: /logs  # location of logs
+logging_path: /logs # location of logs
 
 # TODO: currently, the value to predict is fetched from the next row
 seq_len: 96    # input sequence length of the Informer encoder (dim 1)

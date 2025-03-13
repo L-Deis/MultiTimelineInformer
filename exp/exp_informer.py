@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore')
 class Exp_Informer(Exp_Basic):
     def __init__(self, args):
         super(Exp_Informer, self).__init__(args)
-        self.exp_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        self.exp_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
     
     def _build_model(self):
         model_dict = {
@@ -279,7 +279,7 @@ class Exp_Informer(Exp_Basic):
         print('test shape:', preds_y.shape, trues_y.shape)
 
         # result save
-        folder_path = self.args.root_path + self.args.logging_path + './results_' + self.exp_time + '/' + setting + '/'
+        folder_path = self.args.root_path + self.args.logging_path + '/results_' + self.exp_time + '/' + setting + '/'
         # folder_path = './results/' + setting +'/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -322,7 +322,7 @@ class Exp_Informer(Exp_Basic):
         
         # result save
         # folder_path = './results/' + setting +'/'
-        folder_path = self.args.root_path + self.args.logging_path + './results_' + self.exp_time + '/' + setting + '/'
+        folder_path = self.args.root_path + self.args.logging_path + '/results_' + self.exp_time + '/' + setting + '/'
 
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
