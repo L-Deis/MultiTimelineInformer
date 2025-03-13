@@ -24,6 +24,7 @@ warnings.filterwarnings('ignore')
 class Exp_Informer(Exp_Basic):
     def __init__(self, args):
         super(Exp_Informer, self).__init__(args)
+        self.exp_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     
     def _build_model(self):
         model_dict = {
@@ -178,7 +179,8 @@ class Exp_Informer(Exp_Basic):
         self.criterion = self.select_criterion(self.args.loss)
         self.criterion_category = self.select_criterion(self.args.loss_category)
 
-        path = os.path.join(self.args.checkpoints, setting)
+        path = self.args.root_path + self.args.checkpoints_path + '/' + setting
+        # path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -277,7 +279,8 @@ class Exp_Informer(Exp_Basic):
         print('test shape:', preds_y.shape, trues_y.shape)
 
         # result save
-        folder_path = './results/' + setting +'/'
+        folder_path = self.args.root_path + self.args.logging_path + './results_' + self.exp_time + '/' + setting + '/'
+        # folder_path = './results/' + setting +'/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
@@ -300,7 +303,8 @@ class Exp_Informer(Exp_Basic):
         self.criterion_category = self.select_criterion(self.args.loss_category)
 
         if load:
-            path = os.path.join(self.args.checkpoints, setting)
+            # path = os.path.join(self.args.checkpoints, setting)
+            path = self.args.root_path + self.args.checkpoints_path + '/' + setting
             best_model_path = path+'/'+'checkpoint.pth'
             self.model.load_state_dict(torch.load(best_model_path))
 
@@ -317,7 +321,9 @@ class Exp_Informer(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         
         # result save
-        folder_path = './results/' + setting +'/'
+        # folder_path = './results/' + setting +'/'
+        folder_path = self.args.root_path + self.args.logging_path + './results_' + self.exp_time + '/' + setting + '/'
+
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         

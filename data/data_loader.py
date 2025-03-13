@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import gc
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -219,39 +220,57 @@ class Dataset_MEWS(Dataset):
 
     def __read_data__(self):
         # --- VITALS ---
+        print("DATALODER: Start Loading Vitals...")
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path,
-                                        #   self.path_vitals))
-        # df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.path_vitals), nrows=1000) #DEBUG: Read only the first 1000 lines
+        df_raw = pd.read_csv(os.path.join(
+            self.root_path,
+            self.path_vitals),
+            usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld', 'stay_id'], #Don't load mdn to save memory
+            nrows=1000, #DEBUG: Read only the first 1000 lines
+        )
         
+        #Get head
+        # print("Head of df_raw",df_raw.head())
 
-        #DEBUG: Load mappings df, keep only the stay_id in df_raw that are in df_mappings
+        #DEBUG: Load mappings df, to keep only the stay_id in df_raw that are in df_mappings
         df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                            self.path_mapping))
-        #inner join df_mappings and df_admissions on double key 'mdn' and 'stay_id'
-        df_mappings = pd.merge(df_mappings, df_raw, how='inner', left_on=['mdn', 'stay_id'], right_on=['mdn', 'stay_id'])
+                                            self.path_mapping),
+                                            usecols=['stay_id']) #Only load stay_id to save memory
         #Create a list of all the stay_id that are in df_mappings
         stay_ids = df_mappings['stay_id'].unique()
         #Filter the df_raw to keep only the stay_id that are in stay_ids
         df_raw = df_raw[df_raw['stay_id'].isin(stay_ids)]
+
+        #inner join df_mappings and df_admissions on double key 'mdn' and 'stay_id'
+        # df_mappings = pd.merge(df_mappings, df_raw, how='inner', left_on=['mdn', 'stay_id'], right_on=['mdn', 'stay_id'])
+
         
         # --- MEWS Specific pre-processing ---
         #Print all columns names
         print("Columns names",df_raw.columns)
         #Drop mdn column
-        df_raw = df_raw.drop(columns=['mdn'])
+        # df_raw.drop(columns=['mdn'], inplace=True)
         #Rename date_time to date
-        df_raw = df_raw.rename(columns={'date_time': 'date'})
+        df_raw.rename(columns={'date_time': 'date'}, inplace=True)
         #Ensure the datatype of each column is float, except date_time which is datetime
         for col in df_raw.columns:
-            if col != 'date':
-                #Turn the NaN to 0
-                df_raw[col] = df_raw[col].fillna(0)
-                #Convert the column to float
-                df_raw[col] = df_raw[col].astype(float)
-            elif col == 'date':
+            if col == 'date':
                 df_raw[col] = pd.to_datetime(df_raw[col])
+            elif col in ['stay_id']:
+                #Turn the NaN to 0
+                df_raw[col].fillna(0, inplace=True)
+                #Convert the column to int
+                df_raw[col] = df_raw[col].astype(np.uint32)                
+            elif col in ['HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld']:
+                #Turn the NaN to 0
+                df_raw[col].fillna(0, inplace=True)
+                #Convert the column to int
+                df_raw[col] = df_raw[col].astype(np.uint16)
+            else:
+                #Turn the NaN to 0
+                df_raw[col].fillna(0, inplace=True)
+                #Convert the column to float
+                df_raw[col] = df_raw[col].astype(np.float32)
         #Ensure the data is sorted per date_time per stay_id
         df_raw = df_raw.sort_values(by=['stay_id', 'date'])
 
@@ -325,6 +344,10 @@ class Dataset_MEWS(Dataset):
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)  
 
+        #Del df to save memory
+        del df_raw
+        gc.collect()
+
         #Save ID data
         self.data_id = df_id.values[border1:border2]
 
@@ -337,10 +360,12 @@ class Dataset_MEWS(Dataset):
         # --- VITALS END ---
 
         # --- STATIC ---
+        print("DATALODER: Start Loading Admissions...")
         df_admissions = pd.read_csv(os.path.join(self.root_path,
                                             self.path_admissions))
         df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                            self.path_mapping))
+                                            self.path_mapping),
+                                            usecols=['stay_id', 'admission_id', 'mdn'])
         #inner join df_mappings and df_admissions on double key 'mdn' and 'admission_id'
         df_admissions = pd.merge(df_mappings, df_admissions, how='inner', left_on=['mdn', 'admission_id'], right_on=['mdn', 'admission_id'])
 
@@ -358,11 +383,11 @@ class Dataset_MEWS(Dataset):
         df_admissions = df_admissions[cols_to_keep]
 
         #Make sure everything is an int
-        df_admissions['stay_id'] = pd.to_numeric(df_admissions['stay_id'], errors='coerce').fillna(0).astype(int)
-        df_admissions['age'] = pd.to_numeric(df_admissions['age'], errors='coerce').fillna(0).astype(int)
-        df_admissions['is_man'] = pd.to_numeric(df_admissions['is_man'], errors='coerce').fillna(0).astype(int)
-        df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(int)
-        df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(int)
+        df_admissions['stay_id'] = pd.to_numeric(df_admissions['stay_id'], errors='coerce').fillna(0).astype(np.uint32)
+        df_admissions['age'] = pd.to_numeric(df_admissions['age'], errors='coerce').fillna(0).astype(np.uint16)
+        df_admissions['is_man'] = pd.to_numeric(df_admissions['is_man'], errors='coerce').fillna(0).astype(np.uint8)
+        df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(np.uint16)
+        df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(np.uint16)
 
         # For each categorical feature in static_data, it needs to be mapped to [0,1,2,...,n-1] where n is the number of unique categories
         N_NUM = 1 #Number of numerical features, placed before each categorical feature, every following feature is categorical
@@ -385,9 +410,14 @@ class Dataset_MEWS(Dataset):
         # self.data_static = Dict: key=[stay_id], value=[age, is_man, dbc_dept, dbc_diag]
         self.data_static = df_admissions.set_index('stay_id').T.to_dict('list')
 
+        #del df_admissions to save memory
+        del df_admissions
+        gc.collect()
+
         # --- STATIC END ---
 
         # --- ANTIBIOTICS ---
+        print("DATALODER: Start Loading Antibiotics...")
         df_antibiotics = pd.read_csv(os.path.join(self.root_path,
                                             self.path_antibiotics))
 
@@ -482,6 +512,11 @@ class Dataset_MEWS(Dataset):
         #     print(f"Total number of rows: {len(stay_antibios_df)}")
 
         self.data_antibiotics = df_antibiotics['antibiotics'].values[border1:border2]
+
+        #del df_antibiotics to save memory
+        del df_antibiotics
+        gc.collect()
+
         # --- ANTIBIOTICS END ---
         
     def __getitem__(self, index):

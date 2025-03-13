@@ -13,7 +13,8 @@ data_path:
 features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
 target: HR  # target feature in S or MS task
 freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
-checkpoints: ./informer_checkpoints  # location of model checkpoints
+checkpoints_path: /informer_checkpoints  # location of model checkpoints
+logging_path: /logs  # location of logs
 
 # TODO: currently, the value to predict is fetched from the next row
 seq_len: 96    # input sequence length of the Informer encoder (dim 1)
@@ -27,8 +28,8 @@ c_out: 7   # output size
 factor: 5  # ProbSparse attention factor
 d_model: 512  # dimension of the model
 n_heads: 8  # number of attention heads
-e_layers: 2  # number of encoder layers #TODO: More if cluster
-d_layers: 2  # number of decoder layers #TODO: More if cluster
+e_layers: 4 #2  # number of encoder layers #TODO: More if cluster
+d_layers: 4 #2  # number of decoder layers #TODO: More if cluster
 d_ff: 2048  # dimension of FCN in the model
 dropout: 0.05  # dropout rate
 attn: prob  # attention type in encoder, options: [prob, full]
@@ -43,7 +44,7 @@ padding: 0
 condition: true #Whether to condition the model on the static variables
 n_cond_num_in: 1 #How many numerical variables to condition on
 n_cond_num_out: 2 #Embedding size for numerical variables
-n_cond_cat_in: "2,10000,10000" #How many categories for each categorical variable
+n_cond_cat_in: "2,32,605" #How many categories for each categorical variable
 n_cond_cat_out: "4,16,16" #Embedding size for each categorical variable
 
 # s_layers is often used for InformerStack or advanced configs (optional)
@@ -60,7 +61,7 @@ use_amp: false  # whether to use automatic mixed precision training
 
 num_workers: 0
 itr: 1
-train_epochs: 3
+train_epochs: 64
 patience: 3
 des: exp
 do_predict: false #TODO: what
