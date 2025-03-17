@@ -26,10 +26,10 @@ enc_in: 6  # encoder input size
 dec_in: 7 # decoder input size
 c_out: 7   # output size
 factor: 5  # ProbSparse attention factor
-d_model: 512  # dimension of the model
+d_model: 256  # dimension of the model
 n_heads: 8  # number of attention heads
-e_layers: 4 #2  # number of encoder layers #TODO: More if cluster
-d_layers: 4 #2  # number of decoder layers #TODO: More if cluster
+e_layers: 3 #2  # number of encoder layers #TODO: More if cluster
+d_layers: 3 #2  # number of decoder layers #TODO: More if cluster
 d_ff: 2048  # dimension of FCN in the model
 dropout: 0.05  # dropout rate
 attn: prob  # attention type in encoder, options: [prob, full]
@@ -51,17 +51,17 @@ n_cond_cat_out: "4,16,16" #Embedding size for each categorical variable
 s_layers: "3,2,1"
 
 # Training configs
-batch_size: 64 #363
-learning_rate: 0.0002
+batch_size: 128 #64 #363
+learning_rate: 0.0005
 loss: mse #mse
 loss_category: crossentropy
-loss_alpha: 0.5 #how much the mse weights
+loss_alpha: 0.25 #how much the mse weights
 lradj: type1
 use_amp: false  # whether to use automatic mixed precision training
 
 num_workers: 0
 itr: 1
-train_epochs: 64
+train_epochs: 10
 patience: 3
 des: exp
 do_predict: false #TODO: what
