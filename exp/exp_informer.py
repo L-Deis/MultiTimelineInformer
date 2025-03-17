@@ -249,7 +249,7 @@ class Exp_Informer(Exp_Basic):
         
         return self.model
 
-    def test(self, setting): #TODO: Make it use correct losses lol
+    def test(self, setting):
         test_data, test_loader = self._get_data(flag='test')
         self.criterion = self.select_criterion(self.args.loss)
         self.criterion_category = self.select_criterion(self.args.loss_category)

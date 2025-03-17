@@ -112,6 +112,33 @@ def categorical_collate(batches, timeenc, freq):
             # Remove patient from this batch
             pass
 
+    if len(valid_inputs) == 0:
+        # Early exit for entirely empty batch
+        # Returning one 0 input
+
+        # infer shapes
+        first_item = batches[0]
+        seq_x_shape = (1,) + first_item[0].shape
+        seq_y_shape = (1,) + first_item[1].shape
+        seq_x_mark_shape = (1,) + first_item[2].shape
+        seq_y_mark_shape = (1,) + first_item[3].shape
+        static_shape = (1,) + first_item[6].shape
+        antibiotics_shape = (1,) + first_item[7].shape
+        id_shape_x = (1,) + first_item[4].shape
+        id_shape_y = (1,) + first_item[5].shape
+
+        # create all 0 tensors
+        zero_seq_x = torch.zeros(seq_x_shape, dtype=torch.float32)
+        zero_seq_x_mark = torch.zeros(seq_x_mark_shape, dtype=torch.float32)
+        zero_seq_y = torch.zeros(seq_y_shape, dtype=torch.float32)
+        zero_seq_y_mark = torch.zeros(seq_y_mark_shape, dtype=torch.float32)
+        zero_statics = torch.zeros(static_shape, dtype=torch.float32)
+        zero_antibiotics = torch.zeros(antibiotics_shape, dtype=torch.float32)
+        zero_seq_x_id = np.zeros(id_shape_x, dtype=np.float32)
+        zero_seq_y_id = np.zeros(id_shape_y, dtype=np.float32)
+
+        return zero_seq_x, zero_seq_y, zero_seq_x_mark, zero_seq_y_mark, zero_seq_x_id, zero_seq_y_id, zero_statics, zero_antibiotics
+
     # Stack the valid inputs and outputs into tensors
     # Reconstruction of the original shape
     valid_seq_x = torch.stack([torch.tensor(seq[0]) if isinstance(seq[0], np.ndarray) else seq[0] for seq in valid_inputs])
