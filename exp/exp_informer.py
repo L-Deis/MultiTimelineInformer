@@ -162,6 +162,9 @@ class Exp_Informer(Exp_Basic):
             pred, true_y, true_antibio = self._process_one_batch(
                 vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             # loss = criterion(pred.detach().cpu(), true.detach().cpu())
+            if pred.nelement() == 0:  # check if predicting worked, skip if empty
+                print("No predictions were made for batch: {0}".format(i))
+                continue
             loss, loss_dict = self.compute_loss(pred[:,:,:-1].detach().cpu(), true_y.detach().cpu(), pred[:,:,-1].detach().cpu(), true_antibio.detach().cpu(), alpha=self.args.loss_alpha)
             total_loss.append(loss)
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
@@ -203,10 +206,14 @@ class Exp_Informer(Exp_Basic):
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
                 iter_count += 1
-                
+                if batch_x.nelement() == 0:  # check if the batch is empty
+                    continue
                 model_optim.zero_grad()
                 pred, true_y, true_antibio = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+                if pred.nelement() == 0: #check if predicting worked, skip if empty
+                    print("No predictions were made for batch: {0}".format(i))
+                    continue
                 loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
                 train_loss.append(loss.item())
                 

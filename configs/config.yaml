@@ -3,7 +3,7 @@ model: informer  # model of experiment, options: [informer, informerstack, infor
 data: MEWS  # data
 # root_path: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path of data file
 # root_path: /container/data # root path of data file
-root_path: Z:/Datasets/AI-EWS
+root_path: Z:/inbox/transfer-2025-03-13-15-24-lukas.deis
 # data_path: vitals_data.csv  
 data_path:
   vitals: vitals_data.csv # data file #timeseries_for_informer.csv
@@ -51,11 +51,11 @@ n_cond_cat_out: "4,16,16" #Embedding size for each categorical variable
 s_layers: "3,2,1"
 
 # Training configs
-batch_size: 128 #64 #363
+batch_size: 363
 learning_rate: 0.0005
 loss: mse #mse
 loss_category: crossentropy
-loss_alpha: 0.25 #how much the mse weights
+loss_alpha: 0.005 #how much the mse weights
 lradj: type1
 use_amp: false  # whether to use automatic mixed precision training
 
@@ -65,7 +65,7 @@ train_epochs: 10
 patience: 3
 des: exp
 do_predict: false #TODO: what
-inverse: false #TODO: what
+inverse: true #TODO: what
 
 # GPU configs
 use_gpu: true
