@@ -1,4 +1,17 @@
 import hydra
+import time
+import sys
+import os
+
+# Disable output buffering
+sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
+os.environ['PYTHONUNBUFFERED'] = '1'
+
+def print_flush(*args, **kwargs):
+    """Custom print function that ensures immediate output"""
+    print(*args, **kwargs, flush=True)
+
+print_flush(f"[{time.strftime('%H:%M:%S')}] Starting program...")
 from omegaconf import DictConfig, OmegaConf
 import torch
 
@@ -16,39 +29,50 @@ DATA_PARSER = {
 
 @hydra.main(config_path="./configs", config_name="config", version_base=None)
 def main(args: DictConfig):
+    print_flush(f"[{time.strftime('%H:%M:%S')}] Initializing configuration...")
     OmegaConf.set_struct(args, False)  # turns off struct mode
     
     # 1. Decide if GPU will be used
     args.use_gpu = bool(torch.cuda.is_available() and args.use_gpu)
+    print_flush(f"[{time.strftime('%H:%M:%S')}] GPU usage: {args.use_gpu} (Available: {torch.cuda.is_available()})")
 
     # 2. Handle multi-GPU logic if requested
     if args.use_gpu and args.use_multi_gpu:
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Setting up multi-GPU configuration...")
         args.devices = args.devices.replace(' ', '')
         device_ids = args.devices.split(',')
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Using GPU devices: {args.device_ids}")
 
     # 3. Override certain settings based on known data sets
     if args.data in DATA_PARSER:
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Setting up data configuration for {args.data}...")
         data_info = DATA_PARSER[args.data]
         args.data_path = data_info['data']
         args.target = data_info['T']
         args.enc_in, args.dec_in, args.c_out = data_info[args.features]
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Data path: {args.data_path}, Target: {args.target}")
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Model dimensions - Encoder in: {args.enc_in}, Decoder in: {args.dec_in}, Output: {args.c_out}")
 
     # 4. Convert s_layers from string to list[int] if needed
     if isinstance(args.s_layers, str):
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Converting s_layers from string to list...")
         args.s_layers = [int(s_l) for s_l in args.s_layers.replace(' ', '').split(',')]
 
     # 5. Adjust frequencies
     args.detail_freq = args.freq
     args.freq = args.freq[-1:]  # e.g., "h" from "15min"
+    print_flush(f"[{time.strftime('%H:%M:%S')}] Frequency settings - Detail: {args.detail_freq}, Base: {args.freq}")
 
-    print("Configuration (OmegaConf) in experiment:")
-    print(OmegaConf.to_yaml(args))
+    print_flush(f"\n[{time.strftime('%H:%M:%S')}] Full Configuration (OmegaConf):")
+    print_flush(OmegaConf.to_yaml(args))
 
+    print_flush(f"\n[{time.strftime('%H:%M:%S')}] Initializing Informer experiment...")
     Exp = Exp_Informer
 
     for ii in range(args.itr):
+        print_flush(f"\n[{time.strftime('%H:%M:%S')}] Starting iteration {ii+1}/{args.itr}")
         # setting record of experiments
         setting = "{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_at{}_fc{}_eb{}_dt{}_mx{}_{}_{}".format(
             args.model, args.data, args.features,
@@ -56,20 +80,25 @@ def main(args: DictConfig):
             args.d_model, args.n_heads, args.e_layers, args.d_layers, args.d_ff, args.attn,
             args.factor, args.embed, args.distil, args.mix, args.des, ii
         )
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Experiment setting: {setting}")
 
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Initializing experiment instance...")
         exp = Exp(args)  # initialize experiment
-        print(f'>>>>>>>start training : {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
+        
+        print_flush(f'[{time.strftime("%H:%M:%S")}] >>>>>>>start training : {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
         exp.train(setting)
 
-        print(f'>>>>>>>testing : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+        print_flush(f'[{time.strftime("%H:%M:%S")}] >>>>>>>testing : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
         exp.test(setting)
 
         if args.do_predict:
-            print(f'>>>>>>>predicting : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+            print_flush(f'[{time.strftime("%H:%M:%S")}] >>>>>>>predicting : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
             exp.predict(setting, True)
 
-        # Clear GPU cache
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Clearing GPU cache...")
         torch.cuda.empty_cache()
+
+    print_flush(f"[{time.strftime('%H:%M:%S')}] Program completed.")
 
 
 if __name__ == "__main__":
