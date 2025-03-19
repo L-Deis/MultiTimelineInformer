@@ -23,16 +23,19 @@ warnings.filterwarnings('ignore')
 
 class Exp_Informer(Exp_Basic):
     def __init__(self, args):
+        print(f"[{time.strftime('%H:%M:%S')}] Initializing Informer experiment...")
         super(Exp_Informer, self).__init__(args)
         self.exp_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
     
     def _build_model(self):
+        print(f"[{time.strftime('%H:%M:%S')}] Building model architecture...")
         model_dict = {
             'informer':Informer,
             'informerstack':InformerStack,
         }
         if self.args.model=='informer' or self.args.model=='informerstack':
             e_layers = self.args.e_layers if self.args.model=='informer' else self.args.s_layers
+            print(f"[{time.strftime('%H:%M:%S')}] Creating {self.args.model} with {e_layers} encoder layers...")
             model = model_dict[self.args.model](
                 self.args.enc_in,
                 self.args.dec_in, 
@@ -65,10 +68,12 @@ class Exp_Informer(Exp_Basic):
             ).float()
         
         if self.args.use_multi_gpu and self.args.use_gpu:
+            print(f"[{time.strftime('%H:%M:%S')}] Setting up model for multi-GPU...")
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
 
     def _get_data(self, flag):
+        print(f"[{time.strftime('%H:%M:%S')}] Loading {flag} dataset...")
         args = self.args
 
         data_dict = {
@@ -92,6 +97,14 @@ class Exp_Informer(Exp_Basic):
             # Data = Dataset_Pred # DEBUG: Disable for now
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
+        
+        print(f"[{time.strftime('%H:%M:%S')}] Creating dataset with parameters:")
+        print(f"    - Root path: {args.root_path}")
+        print(f"    - Data path: {args.data_path}")
+        print(f"    - Sequence length: {args.seq_len}")
+        print(f"    - Label length: {args.label_len}")
+        print(f"    - Prediction length: {args.pred_len}")
+        
         data_set = Data(
             root_path=args.root_path,
             data_path=args.data_path,
@@ -104,8 +117,15 @@ class Exp_Informer(Exp_Basic):
             freq=freq,
             cols=args.cols
         )
-        print(flag, len(data_set))
-        categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)  # Assuming person_id is the 9th column (index 8)
+        print(f"[{time.strftime('%H:%M:%S')}] {flag} dataset size: {len(data_set)}")
+        
+        print(f"[{time.strftime('%H:%M:%S')}] Creating DataLoader...")
+        print(f"    - Batch size: {batch_size}")
+        print(f"    - Shuffle: {shuffle_flag}")
+        print(f"    - Num workers: {args.num_workers}")
+        print(f"    - Drop last: {drop_last}")
+        
+        categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -162,9 +182,6 @@ class Exp_Informer(Exp_Basic):
             pred, true_y, true_antibio = self._process_one_batch(
                 vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             # loss = criterion(pred.detach().cpu(), true.detach().cpu())
-            if pred.nelement() == 0:  # check if predicting worked, skip if empty
-                print("No predictions were made for batch: {0}".format(i))
-                continue
             loss, loss_dict = self.compute_loss(pred[:,:,:-1].detach().cpu(), true_y.detach().cpu(), pred[:,:,-1].detach().cpu(), true_antibio.detach().cpu(), alpha=self.args.loss_alpha)
             total_loss.append(loss)
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
@@ -206,14 +223,10 @@ class Exp_Informer(Exp_Basic):
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
                 iter_count += 1
-                if batch_x.nelement() == 0:  # check if the batch is empty
-                    continue
+                
                 model_optim.zero_grad()
                 pred, true_y, true_antibio = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
-                if pred.nelement() == 0: #check if predicting worked, skip if empty
-                    print("No predictions were made for batch: {0}".format(i))
-                    continue
                 loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
                 train_loss.append(loss.item())
                 

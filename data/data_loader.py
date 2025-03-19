@@ -226,7 +226,7 @@ class Dataset_MEWS(Dataset):
             self.root_path,
             self.path_vitals),
             usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld', 'stay_id'], #Don't load mdn to save memory
-            #  nrows=10000, #DEBUG: Read only the first 1000 lines
+            # nrows=1000, #DEBUG: Read only the first 1000 lines
         )
         
         #Get head
