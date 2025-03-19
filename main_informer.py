@@ -32,6 +32,19 @@ def main(args: DictConfig):
     print_flush(f"[{time.strftime('%H:%M:%S')}] Initializing configuration...")
     OmegaConf.set_struct(args, False)  # turns off struct mode
     
+    # Handle backward compatibility for root_path parameter
+    if hasattr(args, 'root_path') and not hasattr(args, 'root_path_data'):
+        print_flush(f"[{time.strftime('%H:%M:%S')}] Converting root_path to root_path_data for backward compatibility")
+        args.root_path_data = args.root_path
+    
+    # Set root_path_save to root_path_data if not specified
+    if not hasattr(args, 'root_path_save'):
+        print_flush(f"[{time.strftime('%H:%M:%S')}] root_path_save not specified, using root_path_data for saving")
+        args.root_path_save = args.root_path_data
+    
+    print_flush(f"[{time.strftime('%H:%M:%S')}] Data loading from: {args.root_path_data}")
+    print_flush(f"[{time.strftime('%H:%M:%S')}] Results saving to: {args.root_path_save}")
+    
     # 1. Decide if GPU will be used
     args.use_gpu = bool(torch.cuda.is_available() and args.use_gpu)
     print_flush(f"[{time.strftime('%H:%M:%S')}] GPU usage: {args.use_gpu} (Available: {torch.cuda.is_available()})")

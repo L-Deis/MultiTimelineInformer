@@ -24,6 +24,12 @@ from functools import partial
 import warnings
 warnings.filterwarnings('ignore')
 
+# For handling OmegaConf serialization
+try:
+    from omegaconf import OmegaConf
+except ImportError:
+    OmegaConf = None
+
 # Disable output buffering
 sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
 os.environ['PYTHONUNBUFFERED'] = '1'
@@ -133,8 +139,24 @@ class Exp_Informer(Exp_Basic):
             if not os.path.exists(path):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint not found at {path}")
                 return None
+            
+            # First try to load with weights_only=True (secure method) with numpy scalars added to safe list
+            try:
+                import numpy as np
+                # Check if add_safe_globals function exists (PyTorch 2.6+)
+                if hasattr(torch.serialization, 'add_safe_globals'):
+                    from numpy._core.multiarray import scalar as np_scalar
+                    # Add numpy scalars to safe globals list
+                    torch.serialization.add_safe_globals([np_scalar])
+                    print_flush(f"[{time.strftime('%H:%M:%S')}] Added numpy scalar to safe globals for secure loading")
                 
-            checkpoint = torch.load(path, map_location=map_location or self.device)
+                checkpoint = torch.load(path, map_location=map_location or self.device)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint loaded securely")
+            except Exception as e:
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Secure loading failed, trying with weights_only=False: {str(e)}")
+                # Fallback to weights_only=False (less secure, but works with older checkpoints)
+                checkpoint = torch.load(path, map_location=map_location or self.device, weights_only=False)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint loaded with weights_only=False")
             
             if model is not None and 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
@@ -149,6 +171,7 @@ class Exp_Informer(Exp_Basic):
             
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading checkpoint: {str(e)}")
+            print_flush(f"[{time.strftime('%H:%M:%S')}] If you're using PyTorch 2.6+, try updating the code to handle the new security restrictions for torch.load()")
             return None
 
     def _build_model(self):
@@ -223,14 +246,14 @@ class Exp_Informer(Exp_Basic):
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
         
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating dataset with parameters:")
-        print_flush(f"    - Root path: {args.root_path}")
+        print_flush(f"    - Root path data: {args.root_path_data}")
         print_flush(f"    - Data path: {args.data_path}")
         print_flush(f"    - Sequence length: {args.seq_len}")
         print_flush(f"    - Label length: {args.label_len}")
         print_flush(f"    - Prediction length: {args.pred_len}")
         
         data_set = Data(
-            root_path=args.root_path,
+            root_path=args.root_path_data,
             data_path=args.data_path,
             flag=flag,
             size=[args.seq_len, args.label_len, args.pred_len],
@@ -329,22 +352,53 @@ class Exp_Informer(Exp_Basic):
         self.criterion_category = self.select_criterion(self.args.loss_category)
 
         # Setup checkpoint directory
-        checkpoint_dir = os.path.join(self.args.root_path, self.args.checkpoints_path, setting, self.exp_time)
+        checkpoint_dir = os.path.join(self.args.root_path_save, self.args.checkpoints_path, setting, self.exp_time)
         os.makedirs(checkpoint_dir, exist_ok=True)
         print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoints will be saved to {checkpoint_dir}")
         
         # Save experiment configuration
         try:
             with open(os.path.join(checkpoint_dir, 'config.json'), 'w') as f:
-                # Convert args to dict and save as JSON
-                config = {k: v for k, v in vars(self.args).items() if not k.startswith('__') and not callable(v)}
-                # Handle non-serializable objects
-                for k, v in config.items():
-                    if not isinstance(v, (int, float, str, bool, list, dict, tuple, type(None))):
-                        config[k] = str(v)
+                # Try to detect if the config is an OmegaConf object
+                if hasattr(self.args, '_metadata') and OmegaConf is not None:
+                    # Use OmegaConf's built-in conversion to convert to a basic Python structure
+                    config = OmegaConf.to_container(self.args, resolve=True)
+                    print_flush(f"[{time.strftime('%H:%M:%S')}] Converting OmegaConf config to basic Python structure")
+                else:
+                    # Fallback to manual conversion
+                    config = {}
+                    for k, v in vars(self.args).items():
+                        if not k.startswith('__') and not callable(v):
+                            # Handle OmegaConf nodes
+                            if hasattr(v, '_value'):
+                                config[k] = v._value
+                            # Handle lists and dicts
+                            elif isinstance(v, (list, dict)):
+                                config[k] = v
+                            # Handle basic types
+                            elif isinstance(v, (int, float, str, bool, type(None))):
+                                config[k] = v
+                            # Convert other types to string
+                            else:
+                                config[k] = str(v)
+                
+                # Final check for any remaining non-serializable objects
+                def sanitize_config(obj):
+                    if isinstance(obj, dict):
+                        return {k: sanitize_config(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [sanitize_config(item) for item in obj]
+                    elif isinstance(obj, (int, float, str, bool, type(None))):
+                        return obj
+                    else:
+                        return str(obj)
+                
+                config = sanitize_config(config)
                 json.dump(config, f, indent=4)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Configuration saved successfully")
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving config: {str(e)}")
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Will continue without saving config")
 
         time_now = time.time()
         
@@ -476,7 +530,7 @@ class Exp_Informer(Exp_Basic):
 
         # Load the best model if specified
         if load_best:
-            checkpoint_dir = os.path.join(self.args.root_path, self.args.checkpoints_path, setting)
+            checkpoint_dir = os.path.join(self.args.root_path_save, self.args.checkpoints_path, setting)
             # Try to find the experiment directory
             if os.path.exists(checkpoint_dir):
                 # First, look in the specified experiment time directory if it exists
@@ -534,7 +588,7 @@ class Exp_Informer(Exp_Basic):
         print_flush('test shape:', preds_y.shape, trues_y.shape)
 
         # result save
-        folder_path = os.path.join(self.args.root_path, self.args.logging_path, 'results_' + self.exp_time, setting)
+        folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
         os.makedirs(folder_path, exist_ok=True)
 
         mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
@@ -608,7 +662,7 @@ class Exp_Informer(Exp_Basic):
         self.criterion_category = self.select_criterion(self.args.loss_category)
 
         if load:
-            checkpoint_dir = os.path.join(self.args.root_path, self.args.checkpoints_path, setting)
+            checkpoint_dir = os.path.join(self.args.root_path_save, self.args.checkpoints_path, setting)
             # Try to load the best model similarly to the test method
             if not self._find_and_load_latest_model(checkpoint_dir):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Failed to load any model for prediction")
@@ -637,7 +691,7 @@ class Exp_Informer(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         
         # result save
-        folder_path = os.path.join(self.args.root_path, self.args.logging_path, 'results_' + self.exp_time, setting)
+        folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
         os.makedirs(folder_path, exist_ok=True)
         
         np.save(folder_path+'real_prediction.npy', preds)

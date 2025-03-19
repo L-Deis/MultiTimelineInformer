@@ -22,7 +22,7 @@ def categorical_collate(batches, timeenc, freq):
         or all zeros for inconsistent data.
     """
     if len(batches) == 0:  # Early exit for empty batch
-        return torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([])
+        return torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([])
 
     # Initialize containers for valid inputs and outputs
     valid_inputs = []

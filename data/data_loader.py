@@ -220,13 +220,13 @@ class Dataset_MEWS(Dataset):
 
     def __read_data__(self):
         # --- VITALS ---
-        print("DATALODER: Start Loading Vitals...")
+        print("DATALOADER: Start Loading Vitals...")
         self.scaler = StandardScaler()
         df_raw = pd.read_csv(os.path.join(
             self.root_path,
             self.path_vitals),
             usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld', 'stay_id'], #Don't load mdn to save memory
-            # nrows=1000, #DEBUG: Read only the first 1000 lines
+            nrows=100000, #DEBUG: Read only the first 1000 lines
         )
         
         #Get head
@@ -360,7 +360,7 @@ class Dataset_MEWS(Dataset):
         # --- VITALS END ---
 
         # --- STATIC ---
-        print("DATALODER: Start Loading Admissions...")
+        print("DATALOADER: Start Loading Admissions...")
         df_admissions = pd.read_csv(os.path.join(self.root_path,
                                             self.path_admissions))
         df_mappings = pd.read_csv(os.path.join(self.root_path,
@@ -417,7 +417,7 @@ class Dataset_MEWS(Dataset):
         # --- STATIC END ---
 
         # --- ANTIBIOTICS ---
-        print("DATALODER: Start Loading Antibiotics...")
+        print("DATALOADER: Start Loading Antibiotics...")
         df_antibiotics = pd.read_csv(os.path.join(self.root_path,
                                             self.path_antibiotics))
 

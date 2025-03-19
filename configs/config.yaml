@@ -1,9 +1,10 @@
 model: informer  # model of experiment, options: [informer, informerstack, informerlight(TBD)]
 
 data: MEWS  # data
-# root_path: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path of data file
-# root_path: /container/data # root path of data file
-root_path: Z:/Datasets/AI-EWS
+# root_path_data: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path for data loading
+# root_path_data: /container/data # root path for data loading
+root_path_data: Z:/Datasets/AI-EWS  # root path for data loading
+root_path_save: Z:/Datasets/AI-EWS/exp  # root path for saving checkpoints and logs
 # data_path: vitals_data.csv  
 data_path:
   vitals: vitals_data.csv # data file #timeseries_for_informer.csv
@@ -13,8 +14,9 @@ data_path:
 features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
 target: HR  # target feature in S or MS task
 freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
-checkpoints_path: /informer_checkpoints  # location of model checkpoints
-logging_path: /logs # location of logs
+checkpoints_path: informer_checkpoints  # location of model checkpoints (relative to root_path_save)
+logging_path: logs # location of logs (relative to root_path_save)
+save_every: 10 # save the model every x epochs
 
 # TODO: currently, the value to predict is fetched from the next row
 seq_len: 96    # input sequence length of the Informer encoder (dim 1)
@@ -51,7 +53,7 @@ n_cond_cat_out: "4,16,16" #Embedding size for each categorical variable
 s_layers: "3,2,1"
 
 # Training configs
-batch_size: 512 #363
+batch_size: 256 #363
 learning_rate: 0.0002
 loss: mse #mse
 loss_category: crossentropy
