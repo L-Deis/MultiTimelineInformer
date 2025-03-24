@@ -156,10 +156,6 @@ def categorical_collate(batches, timeenc, freq):
         length_counts = Counter(lengths)
         expected_len = length_counts.most_common(1)[0][0]
 
-        print("WARNING: There were inconsistent antibiotics vectors in a batch!")
-        print("The antibiotics vector has been fixed as far as possible.")
-        #TODO find out why and how that happens
-
         # Fix length if necessary
         fixed_antibiotics = []
         for i, abx in enumerate(abx_tensors):
@@ -170,6 +166,10 @@ def categorical_collate(batches, timeenc, freq):
                 # Trim from the start, keep the last `expected_len` entries
                 trimmed = abx[-expected_len:]
                 fixed_antibiotics.append(trimmed)
+                print("WARNING: There were inconsistent antibiotics vectors in a batch!")
+                print("The antibiotics vector has been fixed as far as possible.")
+                print("The antibiotics vector was TOO LONG")
+                # TODO find out why and how that happens
 
             elif current_len < expected_len:
                 # Pad at the end with the last available value
@@ -178,13 +178,18 @@ def categorical_collate(batches, timeenc, freq):
                 pad_tensor = torch.full((pad_len,), pad_value, dtype=abx.dtype)
                 padded = torch.cat([abx, pad_tensor])
                 fixed_antibiotics.append(padded)
+                print("WARNING: There were inconsistent antibiotics vectors in a batch!")
+                print("The antibiotics vector has been fixed as far as possible.")
+                print("The antibiotics vector was TOO SHORT")
+                # TODO find out why and how that happens
 
         # Step 4: Stack
         valid_antibiotics = torch.stack(fixed_antibiotics)
 
         return valid_seq_x, valid_seq_y, valid_seq_x_mark, valid_seq_y_mark, valid_seq_x_id, valid_seq_y_id, valid_statics, valid_antibiotics
-    except:
+    except Exception as error:
         print("WARNING: The collate_fn encountered an error and the corresponding batch has been dropped!")
-        #TODO figure out how and why that can happen
+        print(error)
+        # TODO figure out how and why that can happen
         return torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor([]), torch.tensor(
             []), torch.tensor([]), torch.tensor([])
