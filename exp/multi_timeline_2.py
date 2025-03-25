@@ -170,6 +170,16 @@ def categorical_collate(batches, timeenc, freq):
                 print("The antibiotics vector has been fixed as far as possible.")
                 print("The antibiotics vector was TOO LONG")
                 # TODO find out why and how that happens
+                print("\n--- Debug: First Sample Snapshot ---")
+                print("valid_seq_x[0]:", valid_seq_x[0])
+                print("valid_seq_x_mark[0]:", valid_seq_x_mark[0])
+                print("valid_seq_y[0]:", valid_seq_y[0])
+                print("valid_seq_y_mark[0]:", valid_seq_y_mark[0])
+                print("valid_seq_x_id[0]:", valid_seq_x_id[0])
+                print("valid_seq_y_id[0]:", valid_seq_y_id[0])
+                print("valid_statics[0]:", valid_statics[0])
+                print("valid_antibiotics[0]:", valid_antibiotics[0])
+                print("--- 🔎 End Debug ---\n")
 
             elif current_len < expected_len:
                 # Pad at the end with the last available value
@@ -182,6 +192,16 @@ def categorical_collate(batches, timeenc, freq):
                 print("The antibiotics vector has been fixed as far as possible.")
                 print("The antibiotics vector was TOO SHORT")
                 # TODO find out why and how that happens
+                print("\n--- Debug: First Sample Snapshot ---")
+                print("valid_seq_x[0]:", valid_seq_x[0])
+                print("valid_seq_x_mark[0]:", valid_seq_x_mark[0])
+                print("valid_seq_y[0]:", valid_seq_y[0])
+                print("valid_seq_y_mark[0]:", valid_seq_y_mark[0])
+                print("valid_seq_x_id[0]:", valid_seq_x_id[0])
+                print("valid_seq_y_id[0]:", valid_seq_y_id[0])
+                print("valid_statics[0]:", valid_statics[0])
+                print("valid_antibiotics[0]:", valid_antibiotics[0])
+                print("--- 🔎 End Debug ---\n")
 
         # Step 4: Stack
         valid_antibiotics = torch.stack(fixed_antibiotics)
