@@ -226,7 +226,7 @@ class Dataset_MEWS(Dataset):
             self.root_path,
             self.path_vitals),
             usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld', 'stay_id'], #Don't load mdn to save memory
-            # nrows=1000, #DEBUG: Read only the first 1000 lines
+            nrows=100000, #DEBUG: Read only the first 1000 lines
         )
         
         #Get head
@@ -511,13 +511,24 @@ class Dataset_MEWS(Dataset):
         #     #And total number of rows
         #     print(f"Total number of rows: {len(stay_antibios_df)}")
 
-        self.data_antibiotics = df_antibiotics['antibiotics'].values[border1:border2]
+        # self.data_antibiotics = df_antibiotics['antibiotics'].values[border1:border2] #DEBUG: I should not do this, since I already border my data_id on which i base my timeframe
 
         #del df_antibiotics to save memory
         del df_antibiotics
         gc.collect()
 
         # --- ANTIBIOTICS END ---
+
+        # --- DEBUG ---
+        #PRINT SHAPE OF EACH DATA
+        print("DATALOADER: Shapes of each data")
+        print(f"data_x: {self.data_x.shape}")
+        print(f"data_y: {self.data_y.shape}")
+        print(f"data_stamp: {self.data_stamp.shape}")
+        print(f"data_id: {self.data_id.shape}")
+        # print(f"data_static: {self.data_static.shape}")
+        print(f"data_antibiotics: {self.data_antibiotics.shape}")
+        # --- DEBUG END ---
         
     def __getitem__(self, index):
         s_begin = index
