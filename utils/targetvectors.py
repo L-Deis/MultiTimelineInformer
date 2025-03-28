@@ -56,13 +56,12 @@ def generate_antibiotics_vector(df_antibiotics,
 
     all_results = []
 
-    for stay_id, stay_antibios_df in df_antibiotics.groupby('stay_id'):
-        staymatch_df_id = df_id[df_id['stay_id'] == stay_id]
-        if staymatch_df_id.empty:
-            continue
+    # for stay_id, stay_antibios_df in df_antibiotics.groupby('stay_id'):
+    for stay_id, stay_ids_df in df_id.groupby('stay_id'):
+        stay_antibios_df = df_antibiotics[df_antibiotics['stay_id'] == stay_id]
 
-        stay_start = staymatch_df_id['date'].min()
-        stay_end = staymatch_df_id['date'].max()
+        stay_start = stay_ids_df['date'].min()
+        stay_end = stay_ids_df['date'].max()
 
         full_time_range = pd.date_range(start=stay_start, end=stay_end, freq=freq)
         n = len(full_time_range)
