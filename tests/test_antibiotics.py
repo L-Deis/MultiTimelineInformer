@@ -70,7 +70,28 @@ def test_missing_stays_and_empty_input():
     new_df = generate_antibiotics_vector(df_antibiotics, df_id)
     old_df = generate_antibiotics_vector_old(df_antibiotics, df_id, df_mappings, border1, border2)
 
-    assert new_df.empty or (new_df['antibiotics'] == 0).all()
+    assert (new_df == 0).all()
+    assert (old_df == 0).all()
+    print("✅ Handled missing stay_id and empty vectors correctly.")
+
+def test_missing_antibiotics_data():
+    df_antibiotics = pd.DataFrame({
+        'stay_id': [99],  # ID not present in df_id
+        'administration_time': pd.to_datetime(['2023-01-01 12:00'])
+    })
+
+    df_id = pd.DataFrame({
+        'stay_id': [1],
+        'date': pd.to_datetime(['2023-01-01 10:00'])
+    })
+
+    df_mappings = pd.DataFrame()
+    border1, border2 = None, None
+
+    new_df = generate_antibiotics_vector(df_antibiotics, df_id)
+    old_df = generate_antibiotics_vector_old(df_antibiotics, df_id, df_mappings, border1, border2)
+
+    assert (new_df == 0).all()
     assert (old_df == 0).all()
     print("✅ Handled missing stay_id and empty vectors correctly.")
 
