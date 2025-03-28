@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 
 
-def generate_antibiotics_vector(df_antibiotics, df_id,
+def generate_antibiotics_vector(df_antibiotics,
+                                df_id,
                                 gap_minutes=24 * 60,
                                 margin_minutes=30,
                                 freq='1min'):
@@ -49,6 +50,7 @@ def generate_antibiotics_vector(df_antibiotics, df_id,
     -----
     - This function assumes administration times are within the bounds of stay times.
     - TODO The output is fully expanded (non-sparse); maybe use `pd.SparseDtype` for long time ranges.
+    - TODO check thaty the time vector is based on stay_id
 
     """
 
@@ -101,8 +103,8 @@ def generate_antibiotics_vector(df_antibiotics, df_id,
 
             # Get index range using closest matches
             try:
-                start_idx = time_to_index.get(start_time, method='backfill')
-                end_idx = time_to_index.get(end_time, method='ffill')
+                start_idx = time_to_index.get(start_time)
+                end_idx = time_to_index.get(end_time)
                 antibiotics_vector[start_idx:end_idx + 1] = 1
             except KeyError:
                 print("There was an antibiotics administration outside of a known stay. It has been skipped.")
@@ -121,7 +123,7 @@ def generate_antibiotics_vector(df_antibiotics, df_id,
         # return empty df in case of empty inputs
         return pd.DataFrame(columns=['stay_id', 'date', 'antibiotics'])
 
-    return pd.concat(all_results).sort_values(by=['stay_id', 'date']).reset_index(drop=True)
+    return pd.concat(all_results).sort_values(by=['stay_id', 'date'])['antibiotics'].values
 
 
 def generate_antibiotics_vector_old(df_antibiotics,
@@ -143,6 +145,9 @@ def generate_antibiotics_vector_old(df_antibiotics,
     for stay_id, stay_antibios_df in df_antibiotics.groupby('stay_id'):
         # Find matching vital date start and end for corresponding stay_id
         staymatch_df_id = df_id[df_id['stay_id'] == stay_id]
+        if staymatch_df_id.empty:
+            # Skip this stay_id as there's no matching stay info
+            continue
 
         stay_start = staymatch_df_id['date'].min()
         stay_end = staymatch_df_id['date'].max()
@@ -191,6 +196,9 @@ def generate_antibiotics_vector_old(df_antibiotics,
         # Append the new dataframe to the list
         full_range_dfs.append(administration_complete_df)
 
+    if not full_range_dfs:
+        return pd.Series(dtype=np.uint8)  # or an empty DataFrame if needed
+
     # Concatenate all the dataframes
     df_antibiotics = pd.concat(full_range_dfs)
 
@@ -207,5 +215,6 @@ def generate_antibiotics_vector_old(df_antibiotics,
     #     #And total number of rows
     #     print(f"Total number of rows: {len(stay_antibios_df)}")
 
-    return df_antibiotics['antibiotics'].values[border1:border2]
+    return df_antibiotics['antibiotics'].values
+    #.values[border1:border2]
     #DEBUG: I should not do this, since I already border my data_id on which i base my timeframe

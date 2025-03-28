@@ -234,7 +234,7 @@ class Dataset_MEWS(Dataset):
             self.path_vitals),
             usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
                      'stay_id'],  #Don't load mdn to save memory
-            nrows=100000,  #DEBUG: Read only the first 1000 lines
+            #nrows=100000,  #DEBUG: Read only the first 1000 lines
         )
 
         #Get head
@@ -453,6 +453,10 @@ class Dataset_MEWS(Dataset):
         df_antibiotics = df_antibiotics.sort_values(by=['stay_id', 'administration_time'])
 
         self.data_antibiotics = generate_antibiotics_vector(df_antibiotics, df_id)
+
+        # del df_antibiotics to save memory
+        del df_antibiotics
+        gc.collect()
 
         # --- DEBUG ---
         # PRINT SHAPE OF EACH DATA
