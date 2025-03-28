@@ -79,7 +79,7 @@ def generate_antibiotics_vector(df_antibiotics,
         stay_antibios_df['administration_time'] = stay_antibios_df['administration_time'].dt.floor(freq)
 
         # early exit for empty vectors
-        if stay_antibios_df.empty:
+        if stay_antibios_df.dropna().empty:
             result = pd.DataFrame({
                 'stay_id': stay_id,
                 'date': full_time_range,
