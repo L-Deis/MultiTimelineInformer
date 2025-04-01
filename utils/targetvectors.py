@@ -96,9 +96,20 @@ def generate_antibiotics_vector(df_antibiotics,
             start_time = group['administration_time'].iloc[0] - pd.Timedelta(minutes=margin_minutes)
             end_time = group['administration_time'].iloc[-1]
 
+            start_time = start_time.floor(freq)
+            end_time = end_time.floor(freq)
+
             # Clip to stay window
-            start_time = max(start_time, stay_start)
-            end_time = min(end_time, stay_end)
+            # start_time = max(start_time, stay_start)
+            # end_time = min(end_time, stay_end)
+            if (start_time < stay_start):
+                start_time = stay_start.floor(freq)
+            if (start_time > stay_end):
+                continue
+            if (end_time > stay_end):
+                end_time = stay_end.floor(freq)
+            if (end_time < stay_start):
+                continue
 
             # Get index range using closest matches
             try:
