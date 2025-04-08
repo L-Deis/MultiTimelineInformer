@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import gc
+import pickle
 
 from torch.utils.data import Dataset
 
@@ -195,7 +196,7 @@ class Dataset_MEWS(Dataset):
                  features='S',
                  data_path={"vitals": "vitals.csv", "admissions": "admissions.csv", "mappings": "mapping.csv",
                             "antibiotics": "antibiotics.csv"},
-                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None):
+                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -210,6 +211,7 @@ class Dataset_MEWS(Dataset):
         assert flag in ['train', 'test', 'val']
         type_map = {'train': 0, 'val': 1, 'test': 2}
         self.set_type = type_map[flag]
+        self.set_flag = flag
 
         self.features = features
         self.target = target
@@ -219,22 +221,73 @@ class Dataset_MEWS(Dataset):
         self.freq = freq
         self.cols = cols
         self.root_path = root_path
-        self.path_vitals = data_path["vitals"]
-        self.path_admissions = data_path["admissions"]
-        self.path_mapping = data_path["mappings"]
-        self.path_antibiotics = data_path["antibiotics"]
+        self.data_path = data_path
+        self.use_preprocessed = use_preprocessed
         self.__read_data__()
 
+    def _get_preprocessed_path(self):
+        """Get the path for the preprocessed data file based on the dataset type."""
+        return os.path.join(self.root_path, f"preprocessed_{self.set_flag}.pkl")
+
+    def _save_preprocessed_data(self):
+        print("Saving preprocessed data.")
+        """Save the preprocessed data to a pickle file."""
+        preprocessed_data = {
+            'data_x': self.data_x,
+            'data_y': self.data_y,
+            'data_stamp': self.data_stamp,
+            'data_id': self.data_id,
+            'data_static': self.data_static,
+            'data_antibiotics': self.data_antibiotics,
+            'scaler': self.scaler
+        }
+        
+        save_path = self._get_preprocessed_path()
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        with open(save_path, 'wb') as f:
+            pickle.dump(preprocessed_data, f)
+        print(f"Saved preprocessed data to {save_path}")
+
+    def _load_preprocessed_data(self):
+        print("Try to loading preprocessed data...")
+        """Load preprocessed data from a pickle file."""
+        load_path = self._get_preprocessed_path()
+        if not os.path.exists(load_path):
+            print(f"No preprocessed data found at {load_path}")
+            return False
+            
+        try:
+            with open(load_path, 'rb') as f:
+                preprocessed_data = pickle.load(f)
+            
+            self.data_x = preprocessed_data['data_x']
+            self.data_y = preprocessed_data['data_y']
+            self.data_stamp = preprocessed_data['data_stamp']
+            self.data_id = preprocessed_data['data_id']
+            self.data_static = preprocessed_data['data_static']
+            self.data_antibiotics = preprocessed_data['data_antibiotics']
+            self.scaler = preprocessed_data['scaler']
+            
+            print(f"Loaded preprocessed data from {load_path}")
+            return True
+        except Exception as e:
+            print(f"Error loading preprocessed data: {e}")
+            return False
+
     def __read_data__(self):
+        if self.use_preprocessed and self._load_preprocessed_data():
+            return
+            
         # --- VITALS ---
         print("DATALOADER: Start Loading Vitals...")
         self.scaler = StandardScaler()
         df_raw = pd.read_csv(os.path.join(
             self.root_path,
-            self.path_vitals),
+            self.data_path["vitals"]),
             usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
                      'stay_id'],  #Don't load mdn to save memory
-            #nrows=100000,  #DEBUG: Read only the first 1000 lines
+            nrows=100000,  #DEBUG: Read only the first 1000 lines
         )
 
         #Get head
@@ -242,7 +295,7 @@ class Dataset_MEWS(Dataset):
 
         #DEBUG: Load mappings df, to keep only the stay_id in df_raw that are in df_mappings
         df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                               self.path_mapping),
+                                               self.data_path["mappings"]),
                                   usecols=['stay_id'])  #Only load stay_id to save memory
         #Create a list of all the stay_id that are in df_mappings
         stay_ids = df_mappings['stay_id'].unique()
@@ -330,7 +383,7 @@ class Dataset_MEWS(Dataset):
         num_test = int(len(df_raw) * 0.2)
         num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border2s = [num_train, num_train + num_vali, len(df_raw)] #train: 70%, val: 10%, test: 20%
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -374,9 +427,9 @@ class Dataset_MEWS(Dataset):
         # --- STATIC ---
         print("DATALOADER: Start Loading Admissions...")
         df_admissions = pd.read_csv(os.path.join(self.root_path,
-                                                 self.path_admissions))
+                                                 self.data_path["admissions"]))
         df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                               self.path_mapping),
+                                               self.data_path["mappings"]),
                                   usecols=['stay_id', 'admission_id', 'mdn'])
         #inner join df_mappings and df_admissions on double key 'mdn' and 'admission_id'
         df_admissions = pd.merge(df_mappings, df_admissions, how='inner', left_on=['mdn', 'admission_id'],
@@ -435,7 +488,7 @@ class Dataset_MEWS(Dataset):
         # --- ANTIBIOTICS ---
         print("DATALOADER: Start Loading Antibiotics...")
         df_antibiotics = pd.read_csv(os.path.join(self.root_path,
-                                                  self.path_antibiotics))
+                                                  self.data_path["antibiotics"]))
 
         # For now get back stay_id from matching df_antibiotics with df_mapping on mdn
         # It also keeps only the mdn/stay_id that are in df_mappings, just like for the vitals.
@@ -468,6 +521,10 @@ class Dataset_MEWS(Dataset):
         # print(f"data_static: {self.data_static.shape}")
         print(f"data_antibiotics: {self.data_antibiotics.shape}")
         # --- DEBUG END ---
+
+        # After processing all data, save it if using preprocessed mode
+        if self.use_preprocessed:
+            self._save_preprocessed_data()
 
     def __getitem__(self, index):
         s_begin = index

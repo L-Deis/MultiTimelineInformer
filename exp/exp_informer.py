@@ -173,7 +173,7 @@ class Exp_Informer(Exp_Basic):
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading checkpoint: {str(e)}")
             print_flush(f"[{time.strftime('%H:%M:%S')}] If you're using PyTorch 2.6+, try updating the code to handle the new security restrictions for torch.load()")
             return None
-
+    
     def _build_model(self):
         print_flush(f"[{time.strftime('%H:%M:%S')}] Building model architecture...")
         model_dict = {
@@ -262,7 +262,8 @@ class Exp_Informer(Exp_Basic):
             inverse=args.inverse,
             timeenc=timeenc,
             freq=freq,
-            cols=args.cols
+            cols=args.cols,
+            use_preprocessed=args.use_preprocessed_data if hasattr(args, 'use_preprocessed_data') else False,
         )
         print_flush(f"[{time.strftime('%H:%M:%S')}] {flag} dataset size: {len(data_set)}")
         
@@ -320,11 +321,15 @@ class Exp_Informer(Exp_Basic):
         # return loss
         return loss, {'loss_ce': loss_ce.item(), 'loss_mse': loss_mse.item()}
 
-    # def vali(self, vali_data, vali_loader, criterion):
-    def vali(self, vali_data, vali_loader):
+    def vali(self, vali_data, vali_loader, return_preds=False):
         self.model.eval()
         total_loss = []
         total_loss_dict = {"loss_mse": [], "loss_ce": []}
+        preds_y = []
+        trues_y = []
+        preds_antibio = []
+        trues_antibio = []
+        
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(vali_loader):
             # Skip empty batches
             if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
@@ -338,10 +343,20 @@ class Exp_Informer(Exp_Basic):
             total_loss.append(loss)
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
             total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
+            
+            if return_preds:
+                preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
+                trues_y.append(true_y.detach().cpu().numpy())
+                preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
+                trues_antibio.append(true_antibio.detach().cpu().numpy())
+                
         total_loss = np.average(total_loss) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
         total_loss_dict["loss_ce"] = np.average(total_loss_dict["loss_ce"]) if total_loss_dict["loss_ce"] else 0.0
         self.model.train()
+        
+        if return_preds:
+            return total_loss, total_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio
         return total_loss, total_loss_dict
 
     def train(self, setting):
@@ -464,31 +479,34 @@ class Exp_Informer(Exp_Basic):
 
             print_flush("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss) if train_loss else 0.0
-            # vali_loss = self.vali(vali_data, vali_loader, criterion)
-            # test_loss = self.vali(test_data, test_loader, criterion)
-            vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader)
-            test_loss, test_loss_dict = self.vali(test_data, test_loader)
+            vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader, return_preds=False)
+            test_loss, test_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio = self.vali(test_data, test_loader, return_preds=True)
 
             print_flush("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
             print_flush("Vali Loss: loss_mse: {0:.7f} | loss_ce: {1:.7f}".format(vali_loss_dict['loss_mse'], vali_loss_dict['loss_ce']))
             
-            # Save checkpoint for this epoch
-            if (epoch + 1) % self.args.save_every == 0 or epoch == self.args.train_epochs - 1:
-                self._save_checkpoint(
-                    epoch + 1, 
-                    self.model, 
-                    model_optim, 
-                    vali_loss, 
-                    is_best=False, 
-                    save_dir=checkpoint_dir
-                )
+            # Create epoch-specific directory
+            epoch_dir = os.path.join(checkpoint_dir, f'epoch_{epoch+1}_test_results')
+            os.makedirs(epoch_dir, exist_ok=True)
             
-            # Handle early stopping
+            # Save checkpoint for this epoch in the epoch-specific directory
+            self._save_checkpoint(
+                epoch + 1, 
+                self.model, 
+                model_optim, 
+                vali_loss, 
+                is_best=False, 
+                save_dir=epoch_dir,
+                filename=f'model_epoch_{epoch+1}.pth'
+            )
+            
+            # Handle early stopping and best model
             is_best = vali_loss < best_vali_loss
             if is_best:
                 best_vali_loss = vali_loss
-                # Save best model checkpoint
+                
+                # Save best in main checkpoint directory for easy access
                 self._save_checkpoint(
                     epoch + 1, 
                     self.model, 
@@ -503,6 +521,50 @@ class Exp_Informer(Exp_Basic):
             if early_stopping.early_stop:
                 print_flush("Early stopping")
                 break
+
+            # Save test predictions and true values for this epoch
+            if preds_y:  # Only save if we have predictions
+                try:
+                    # Ensure all arrays have the same shape
+                    max_len = max(p.shape[1] for p in preds_y)
+                    preds_y_padded = [np.pad(p, ((0,0), (0,max_len-p.shape[1]), (0,0))) for p in preds_y]
+                    trues_y_padded = [np.pad(t, ((0,0), (0,max_len-t.shape[1]), (0,0))) for t in trues_y]
+                    preds_antibio_padded = [np.pad(p, ((0,0), (0,max_len-p.shape[1]))) for p in preds_antibio]
+                    trues_antibio_padded = [np.pad(t, ((0,0), (0,max_len-t.shape[1]))) for t in trues_antibio]
+                    
+                    # Convert to numpy arrays
+                    preds_y = np.array(preds_y_padded)
+                    trues_y = np.array(trues_y_padded)
+                    preds_antibio = np.array(preds_antibio_padded)
+                    trues_antibio = np.array(trues_antibio_padded)
+                    
+                    # Save the predictions and true values
+                    np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
+                    np.save(os.path.join(epoch_dir, 'trues_y.npy'), trues_y)
+                    np.save(os.path.join(epoch_dir, 'preds_antibio.npy'), preds_antibio)
+                    np.save(os.path.join(epoch_dir, 'trues_antibio.npy'), trues_antibio)
+                    
+                    # Save metrics for this epoch
+                    mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
+                    crossentropy = CEL(preds_antibio, trues_antibio)
+                    
+                    metrics_data = {
+                        'mae': float(mae),
+                        'mse': float(mse),
+                        'rmse': float(rmse),
+                        'mape': float(mape),
+                        'mspe': float(mspe),
+                        'crossentropy': float(crossentropy),
+                        'epoch': epoch + 1,
+                        'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+                    }
+                    
+                    with open(os.path.join(epoch_dir, 'metrics.json'), 'w') as f:
+                        json.dump(metrics_data, f, indent=4)
+                    
+                    print_flush(f"Saved test results and model checkpoint for epoch {epoch+1} to {epoch_dir}")
+                except Exception as e:
+                    print_flush(f"Error saving test results for epoch {epoch+1}: {str(e)}")
 
             adjust_learning_rate(model_optim, epoch+1, self.args)
             

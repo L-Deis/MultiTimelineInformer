@@ -5,6 +5,7 @@ data: MEWS  # data
 # root_path_data: /container/data # root path for data loading
 root_path_data: Z:/Datasets/AI-EWS  # root path for data loading
 root_path_save: Z:/Datasets/AI-EWS/exp  # root path for saving checkpoints and logs
+use_preprocessed_data: true  # whether to use preprocessed .pkl files instead of raw CSVs
 # data_path: vitals_data.csv  
 data_path:
   vitals: vitals_data.csv # data file #timeseries_for_informer.csv
