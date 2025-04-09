@@ -525,18 +525,15 @@ class Exp_Informer(Exp_Basic):
             # Save test predictions and true values for this epoch
             if preds_y:  # Only save if we have predictions
                 try:
-                    # Ensure all arrays have the same shape
-                    max_len = max(p.shape[1] for p in preds_y)
-                    preds_y_padded = [np.pad(p, ((0,0), (0,max_len-p.shape[1]), (0,0))) for p in preds_y]
-                    trues_y_padded = [np.pad(t, ((0,0), (0,max_len-t.shape[1]), (0,0))) for t in trues_y]
-                    preds_antibio_padded = [np.pad(p, ((0,0), (0,max_len-p.shape[1]))) for p in preds_antibio]
-                    trues_antibio_padded = [np.pad(t, ((0,0), (0,max_len-t.shape[1]))) for t in trues_antibio]
-                    
-                    # Convert to numpy arrays
-                    preds_y = np.array(preds_y_padded)
-                    trues_y = np.array(trues_y_padded)
-                    preds_antibio = np.array(preds_antibio_padded)
-                    trues_antibio = np.array(trues_antibio_padded)
+                    #each results are a list in shape (iterations, varying batch_size, pred_len, c_out)
+                    #pred_len and c_out are consistent but batch_size and iterations are not, making it impossible to convert to np array directly
+                    #we want to turn them into a (n, pred_len, c_out) data shape
+                    #so we need to reshape them but preds_y is a list not a numpy item
+
+                    preds_y = np.concatenate(preds_y, axis=0)
+                    trues_y = np.concatenate(trues_y, axis=0)
+                    preds_antibio = np.concatenate(preds_antibio, axis=0)
+                    trues_antibio = np.concatenate(trues_antibio, axis=0)
                     
                     # Save the predictions and true values
                     np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
@@ -640,14 +637,10 @@ class Exp_Informer(Exp_Basic):
             print_flush(f"[{time.strftime('%H:%M:%S')}] Warning: No valid predictions found during testing")
             return
 
-        preds_y = np.array(preds_y)
-        trues_y = np.array(trues_y)
-        preds_antibio = np.array(preds_antibio)
-        trues_antibio = np.array(trues_antibio)
-        print_flush('test shape:', preds_y.shape, trues_y.shape)
-        preds_y = preds_y.reshape(-1, preds_y.shape[-2], preds_y.shape[-1])
-        trues_y = trues_y.reshape(-1, trues_y.shape[-2], trues_y.shape[-1])
-        print_flush('test shape:', preds_y.shape, trues_y.shape)
+        preds_y = np.concatenate(preds_y, axis=0)
+        trues_y = np.concatenate(trues_y, axis=0)
+        preds_antibio = np.concatenate(preds_antibio, axis=0)
+        trues_antibio = np.concatenate(trues_antibio, axis=0)
 
         # result save
         folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
