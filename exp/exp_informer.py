@@ -43,7 +43,7 @@ class Exp_Informer(Exp_Basic):
         print_flush(f"[{time.strftime('%H:%M:%S')}] Initializing Informer experiment...")
         super(Exp_Informer, self).__init__(args)
         self.exp_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
-    
+
     # Helper function to check if a batch contains empty tensors
     def _is_empty_batch(self, *tensors):
         """Check if any tensor in the batch is empty (has 0 size in first dimension)"""
@@ -67,13 +67,13 @@ class Exp_Informer(Exp_Basic):
         """
         if save_dir is None:
             return
-            
+
         if not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
-            
+
         if filename is None:
             filename = f"checkpoint_epoch_{epoch}.pth"
-            
+
         # Prepare checkpoint content
         checkpoint = {
             'epoch': epoch,
@@ -82,7 +82,7 @@ class Exp_Informer(Exp_Basic):
             'loss': loss,
             'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
         }
-        
+
         # Save the regular checkpoint
         filepath = os.path.join(save_dir, filename)
         try:
@@ -90,14 +90,14 @@ class Exp_Informer(Exp_Basic):
             print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint saved to {filepath}")
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving checkpoint: {str(e)}")
-            
+
         # Save as best model if it's the best
         if is_best:
             best_path = os.path.join(save_dir, 'best_model.pth')
             try:
                 torch.save(checkpoint, best_path)
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Best model saved to {best_path}")
-                
+
                 # Also save metadata in a readable format
                 meta_info = {
                     'epoch': epoch,
@@ -109,7 +109,7 @@ class Exp_Informer(Exp_Basic):
                     json.dump(meta_info, f, indent=4)
             except Exception as e:
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving best model: {str(e)}")
-            
+
         # Remove old checkpoints if there are too many (keep last 5)
         try:
             checkpoints = [f for f in os.listdir(save_dir) if f.startswith('checkpoint_epoch_') and f.endswith('.pth')]
@@ -120,7 +120,7 @@ class Exp_Informer(Exp_Basic):
                     print_flush(f"[{time.strftime('%H:%M:%S')}] Removed old checkpoint: {old_ckpt}")
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error managing old checkpoints: {str(e)}")
-    
+
     def _load_checkpoint(self, path, model=None, optimizer=None, map_location=None):
         """
         Load model checkpoint with error handling.
@@ -139,7 +139,7 @@ class Exp_Informer(Exp_Basic):
             if not os.path.exists(path):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint not found at {path}")
                 return None
-            
+
             # First try to load with weights_only=True (secure method) with numpy scalars added to safe list
             try:
                 import numpy as np
@@ -149,7 +149,7 @@ class Exp_Informer(Exp_Basic):
                     # Add numpy scalars to safe globals list
                     torch.serialization.add_safe_globals([np_scalar])
                     print_flush(f"[{time.strftime('%H:%M:%S')}] Added numpy scalar to safe globals for secure loading")
-                
+
                 checkpoint = torch.load(path, map_location=map_location or self.device)
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint loaded securely")
             except Exception as e:
@@ -157,23 +157,23 @@ class Exp_Informer(Exp_Basic):
                 # Fallback to weights_only=False (less secure, but works with older checkpoints)
                 checkpoint = torch.load(path, map_location=map_location or self.device, weights_only=False)
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint loaded with weights_only=False")
-            
+
             if model is not None and 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Model weights loaded successfully")
-                
+
             if optimizer is not None and 'optimizer_state_dict' in checkpoint:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Optimizer state loaded successfully")
-                
+
             print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint loaded from epoch {checkpoint.get('epoch', 'unknown')}")
             return checkpoint
-            
+
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading checkpoint: {str(e)}")
             print_flush(f"[{time.strftime('%H:%M:%S')}] If you're using PyTorch 2.6+, try updating the code to handle the new security restrictions for torch.load()")
             return None
-    
+
     def _build_model(self):
         print_flush(f"[{time.strftime('%H:%M:%S')}] Building model architecture...")
         model_dict = {
@@ -185,18 +185,18 @@ class Exp_Informer(Exp_Basic):
             print_flush(f"[{time.strftime('%H:%M:%S')}] Creating {self.args.model} with {e_layers} encoder layers...")
             model = model_dict[self.args.model](
                 self.args.enc_in,
-                self.args.dec_in, 
-                self.args.c_out, 
-                self.args.seq_len, 
+                self.args.dec_in,
+                self.args.c_out,
+                self.args.seq_len,
                 self.args.label_len,
-                self.args.pred_len, 
+                self.args.pred_len,
                 self.args.factor,
-                self.args.d_model, 
-                self.args.n_heads, 
+                self.args.d_model,
+                self.args.n_heads,
                 e_layers, # self.args.e_layers,
-                self.args.d_layers, 
+                self.args.d_layers,
                 self.args.d_ff,
-                self.args.dropout, 
+                self.args.dropout,
                 self.args.attn,
                 self.args.embed,
                 self.args.freq,
@@ -213,7 +213,7 @@ class Exp_Informer(Exp_Basic):
                 # ---
                 self.device
             ).float()
-        
+
         if self.args.use_multi_gpu and self.args.use_gpu:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Setting up model for multi-GPU...")
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -244,14 +244,14 @@ class Exp_Informer(Exp_Basic):
             # Data = Dataset_Pred # DEBUG: Disable for now
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
-        
+
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating dataset with parameters:")
         print_flush(f"    - Root path data: {args.root_path_data}")
         print_flush(f"    - Data path: {args.data_path}")
         print_flush(f"    - Sequence length: {args.seq_len}")
         print_flush(f"    - Label length: {args.label_len}")
         print_flush(f"    - Prediction length: {args.pred_len}")
-        
+
         data_set = Data(
             root_path=args.root_path_data,
             data_path=args.data_path,
@@ -266,13 +266,13 @@ class Exp_Informer(Exp_Basic):
             use_preprocessed=args.use_preprocessed_data if hasattr(args, 'use_preprocessed_data') else False,
         )
         print_flush(f"[{time.strftime('%H:%M:%S')}] {flag} dataset size: {len(data_set)}")
-        
+
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating DataLoader...")
         print_flush(f"    - Batch size: {batch_size}")
         print_flush(f"    - Shuffle: {shuffle_flag}")
         print_flush(f"    - Num workers: {args.num_workers}")
         print_flush(f"    - Drop last: {drop_last}")
-        
+
         categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)
         data_loader = DataLoader(
             data_set,
@@ -287,7 +287,7 @@ class Exp_Informer(Exp_Basic):
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
-    
+
     # def _select_criterion(self):
     #     if self.args.loss == 'mse':
     #         criterion = nn.MSELoss()
@@ -297,17 +297,18 @@ class Exp_Informer(Exp_Basic):
     #         criterion = nn.CrossEntropyLoss()
     #     return criterion
 
-    def select_criterion(self, criterion_name):
+    def select_criterion(self, criterion_name, weight=1):
         if criterion_name == 'mse':
             criterion = nn.MSELoss()
         elif criterion_name == 'l1':
             criterion = nn.L1Loss()
         elif criterion_name == 'crossentropy':
-            criterion = nn.CrossEntropyLoss()
+            pos_weight = torch.tensor([weight], dtype=torch.float32, device=self.device)
+            criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         else:
             criterion = nn.MSELoss()
         return criterion
-    
+
     def compute_loss(self, continuous_preds, continuous_targets, category_logits, category_targets, alpha=1.0):
         # Regression loss (MSE)
         loss_mse = self.criterion(continuous_preds, continuous_targets)
@@ -329,13 +330,13 @@ class Exp_Informer(Exp_Basic):
         trues_y = []
         preds_antibio = []
         trues_antibio = []
-        
+
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(vali_loader):
             # Skip empty batches
             if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in validation")
                 continue
-                
+
             pred, true_y, true_antibio = self._process_one_batch(
                 vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             # loss = criterion(pred.detach().cpu(), true.detach().cpu())
@@ -343,18 +344,18 @@ class Exp_Informer(Exp_Basic):
             total_loss.append(loss)
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
             total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
-            
+
             if return_preds:
                 preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
                 trues_y.append(true_y.detach().cpu().numpy())
                 preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
                 trues_antibio.append(true_antibio.detach().cpu().numpy())
-                
+
         total_loss = np.average(total_loss) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
         total_loss_dict["loss_ce"] = np.average(total_loss_dict["loss_ce"]) if total_loss_dict["loss_ce"] else 0.0
         self.model.train()
-        
+
         if return_preds:
             return total_loss, total_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio
         return total_loss, total_loss_dict
@@ -364,13 +365,13 @@ class Exp_Informer(Exp_Basic):
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
         self.criterion = self.select_criterion(self.args.loss)
-        self.criterion_category = self.select_criterion(self.args.loss_category)
+        self.criterion_category = self.select_criterion(self.args.loss_category, weight = self.args.loss_pos_weight)
 
         # Setup checkpoint directory
         checkpoint_dir = os.path.join(self.args.root_path_save, self.args.checkpoints_path, setting, self.exp_time)
         os.makedirs(checkpoint_dir, exist_ok=True)
         print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoints will be saved to {checkpoint_dir}")
-        
+
         # Save experiment configuration
         try:
             with open(os.path.join(checkpoint_dir, 'config.json'), 'w') as f:
@@ -396,7 +397,7 @@ class Exp_Informer(Exp_Basic):
                             # Convert other types to string
                             else:
                                 config[k] = str(v)
-                
+
                 # Final check for any remaining non-serializable objects
                 def sanitize_config(obj):
                     if isinstance(obj, dict):
@@ -407,7 +408,7 @@ class Exp_Informer(Exp_Basic):
                         return obj
                     else:
                         return str(obj)
-                
+
                 config = sanitize_config(config)
                 json.dump(config, f, indent=4)
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Configuration saved successfully")
@@ -416,10 +417,10 @@ class Exp_Informer(Exp_Basic):
             print_flush(f"[{time.strftime('%H:%M:%S')}] Will continue without saving config")
 
         time_now = time.time()
-        
+
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
-        
+
         model_optim = self._select_optimizer()
         # criterion =  self._select_criterion()
 
@@ -443,23 +444,23 @@ class Exp_Informer(Exp_Basic):
         for epoch in range(start_epoch, self.args.train_epochs):
             iter_count = 0
             train_loss = []
-            
+
             self.model.train()
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
                 iter_count += 1
-                
+
                 # Skip empty batches
                 if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
                     print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in training (iteration {i+1})")
                     continue
-                
+
                 model_optim.zero_grad()
                 pred, true_y, true_antibio = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
                 loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
                 train_loss.append(loss.item())
-                
+
                 if (i+1) % 100==0:
                     print_flush("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     print_flush("\tloss_mse: {0:.7f} | loss_ce {1:.7f}".format(loss_dict['loss_mse'], loss_dict['loss_ce']))
@@ -468,7 +469,7 @@ class Exp_Informer(Exp_Basic):
                     print_flush('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
-                
+
                 if self.args.use_amp:
                     scaler.scale(loss).backward()
                     scaler.step(model_optim)
@@ -485,38 +486,38 @@ class Exp_Informer(Exp_Basic):
             print_flush("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
             print_flush("Vali Loss: loss_mse: {0:.7f} | loss_ce: {1:.7f}".format(vali_loss_dict['loss_mse'], vali_loss_dict['loss_ce']))
-            
+
             # Create epoch-specific directory
             epoch_dir = os.path.join(checkpoint_dir, f'epoch_{epoch+1}_test_results')
             os.makedirs(epoch_dir, exist_ok=True)
-            
+
             # Save checkpoint for this epoch in the epoch-specific directory
             self._save_checkpoint(
-                epoch + 1, 
-                self.model, 
-                model_optim, 
-                vali_loss, 
-                is_best=False, 
+                epoch + 1,
+                self.model,
+                model_optim,
+                vali_loss,
+                is_best=False,
                 save_dir=epoch_dir,
                 filename=f'model_epoch_{epoch+1}.pth'
             )
-            
+
             # Handle early stopping and best model
             is_best = vali_loss < best_vali_loss
             if is_best:
                 best_vali_loss = vali_loss
-                
+
                 # Save best in main checkpoint directory for easy access
                 self._save_checkpoint(
-                    epoch + 1, 
-                    self.model, 
-                    model_optim, 
-                    vali_loss, 
-                    is_best=True, 
-                    save_dir=checkpoint_dir, 
+                    epoch + 1,
+                    self.model,
+                    model_optim,
+                    vali_loss,
+                    is_best=True,
+                    save_dir=checkpoint_dir,
                     filename="best_model.pth"
                 )
-                
+
             early_stopping(vali_loss, self.model, checkpoint_dir)
             if early_stopping.early_stop:
                 print_flush("Early stopping")
@@ -534,17 +535,17 @@ class Exp_Informer(Exp_Basic):
                     trues_y = np.concatenate(trues_y, axis=0)
                     preds_antibio = np.concatenate(preds_antibio, axis=0)
                     trues_antibio = np.concatenate(trues_antibio, axis=0)
-                    
+
                     # Save the predictions and true values
                     np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
                     np.save(os.path.join(epoch_dir, 'trues_y.npy'), trues_y)
                     np.save(os.path.join(epoch_dir, 'preds_antibio.npy'), preds_antibio)
                     np.save(os.path.join(epoch_dir, 'trues_antibio.npy'), trues_antibio)
-                    
+
                     # Save metrics for this epoch
                     mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
                     crossentropy = CEL(preds_antibio, trues_antibio)
-                    
+
                     metrics_data = {
                         'mae': float(mae),
                         'mse': float(mse),
@@ -555,16 +556,16 @@ class Exp_Informer(Exp_Basic):
                         'epoch': epoch + 1,
                         'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
                     }
-                    
+
                     with open(os.path.join(epoch_dir, 'metrics.json'), 'w') as f:
                         json.dump(metrics_data, f, indent=4)
-                    
+
                     print_flush(f"Saved test results and model checkpoint for epoch {epoch+1} to {epoch_dir}")
                 except Exception as e:
                     print_flush(f"Error saving test results for epoch {epoch+1}: {str(e)}")
 
             adjust_learning_rate(model_optim, epoch+1, self.args)
-            
+
         # Load the best model before returning
         best_model_path = os.path.join(checkpoint_dir, 'best_model.pth')
         if os.path.exists(best_model_path):
@@ -579,7 +580,7 @@ class Exp_Informer(Exp_Basic):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded most recent checkpoint: {latest}")
             else:
                 print_flush(f"[{time.strftime('%H:%M:%S')}] No checkpoints found in {checkpoint_dir}")
-        
+
         return self.model
 
     def test(self, setting, load_best=True):
@@ -613,18 +614,18 @@ class Exp_Informer(Exp_Basic):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Checkpoint directory not found at {checkpoint_dir}")
 
         self.model.eval()
-        
+
         preds_y = []
         trues_y = []
         preds_antibio = []
         trues_antibio = []
-        
+
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(test_loader):
             # Skip empty batches
             if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in testing")
                 continue
-                
+
             pred, true_y, true_antibio = self._process_one_batch(
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
@@ -683,10 +684,10 @@ class Exp_Informer(Exp_Basic):
             if not exp_dirs:
                 print_flush(f"[{time.strftime('%H:%M:%S')}] No experiment directories found in {checkpoint_dir}")
                 return False
-                
+
             # Sort by timestamp (assuming format YYYY-MM-DD_HH-MM-SS)
             exp_dirs.sort(reverse=True)  # Most recent first
-            
+
             # Try to find a best model in each directory
             for exp_dir in exp_dirs:
                 full_exp_dir = os.path.join(checkpoint_dir, exp_dir)
@@ -695,7 +696,7 @@ class Exp_Informer(Exp_Basic):
                     self._load_checkpoint(best_model_path, self.model)
                     print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded best model from {exp_dir}")
                     return True
-                    
+
                 # If no best_model.pth, try to find the latest checkpoint
                 checkpoints = [f for f in os.listdir(full_exp_dir) if f.startswith('checkpoint_epoch_')]
                 if checkpoints:
@@ -703,10 +704,10 @@ class Exp_Informer(Exp_Basic):
                     self._load_checkpoint(os.path.join(full_exp_dir, latest), self.model)
                     print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded checkpoint {latest} from {exp_dir}")
                     return True
-            
+
             print_flush(f"[{time.strftime('%H:%M:%S')}] No model checkpoints found in any experiment directory")
             return False
-            
+
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error finding latest model: {str(e)}")
             return False
@@ -724,15 +725,15 @@ class Exp_Informer(Exp_Basic):
                 return
 
         self.model.eval()
-        
+
         preds = []
-        
+
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(pred_loader):
             # Skip empty batches
             if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
                 print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in prediction")
                 continue
-                
+
             pred, true_y, true_antibio = self._process_one_batch(
                 pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             preds.append(pred.detach().cpu().numpy())
@@ -744,13 +745,13 @@ class Exp_Informer(Exp_Basic):
 
         preds = np.array(preds)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        
+
         # result save
         folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
         os.makedirs(folder_path, exist_ok=True)
-        
+
         np.save(folder_path+'real_prediction.npy', preds)
-        
+
         return
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static=None, batch_antibio=None):

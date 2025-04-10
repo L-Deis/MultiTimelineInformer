@@ -19,7 +19,7 @@ checkpoints_path: informer_checkpoints  # location of model checkpoints (relativ
 # TODO add and make sure it's processed properly:
 # resume: True # load the last checkpoint with the same configuration
 logging_path: logs # location of logs (relative to root_path_save)
-save_every: 10 # save the model every x epochs
+save_every: 1 # save the model every x epochs
 
 # TODO: currently, the value to predict is fetched from the next row
 seq_len: 48    # input sequence length of the Informer encoder (dim 1)
@@ -60,7 +60,9 @@ batch_size: 256 #363
 learning_rate: 0.0002
 loss: mse #mse
 loss_category: crossentropy
-loss_alpha: 5 #how much the mse weights
+loss_alpha: 0.1 #how much the mse weights
+loss_pos_weight: 20 #how much the positive class is weighted to tackle class imbalance 5% positive class -> 20 weight
+# no class imbalance? use 1
 lradj: type1
 use_amp: false  # whether to use automatic mixed precision training
 
