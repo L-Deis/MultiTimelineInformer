@@ -25,6 +25,9 @@ class Informer(nn.Module):
             self.cond_embedding = ConditionEmbedding(n_cond_num_in, n_cond_num_out, n_cond_cat_in, n_cond_cat_out)
             self.cond_emb_in = self.cond_embedding.n_in
             self.cond_emb_out = self.cond_embedding.n_out
+        else:
+            self.cond_emb_in = 0
+            self.cond_emb_out = 0
 
         # Encoding
         self.enc_embedding = DataEmbedding(enc_in, d_model, embed, freq, dropout)
@@ -124,7 +127,8 @@ class InformerStack(nn.Module):
                         d_model,
                         d_ff,
                         dropout=dropout,
-                        activation=activation
+                        activation=activation,
+                        d_emb=self.cond_emb_out
                     ) for l in range(el)
                 ],
                 [
@@ -147,6 +151,7 @@ class InformerStack(nn.Module):
                     d_ff,
                     dropout=dropout,
                     activation=activation,
+                    d_emb=self.cond_emb_out
                 )
                 for l in range(d_layers)
             ],
