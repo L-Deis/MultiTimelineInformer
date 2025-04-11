@@ -446,10 +446,18 @@ class Dataset_MEWS(Dataset):
         #Rename columns: 'TrajectSpecialismeAgbCode' -> 'dbc_dept', 'TrajectDiagnoseCode' -> 'dbc_diag'
         df_admissions = df_admissions.rename(
             columns={'TrajectSpecialismeAgbCode': 'dbc_dept', 'TrajectDiagnoseCode': 'dbc_diag'})
-        cols_to_keep = ['stay_id', 'age', 'is_man', 'dbc_dept', 'dbc_diag']
+        cols_to_keep = [
+            'stay_id',
+            'age',
+            'is_man',
+            'dbc_dept',
+            'dbc_diag',
+            'TrajectDiagnoseCcsDiagnosehoofdclusterNaam',
+            'TrajectDiagnoseCcsDiagnosegroepNaam'
+        ]
         df_admissions = df_admissions[cols_to_keep]
 
-        #Make sure everything is an int
+        #Make sure all numbers are ints
         df_admissions['stay_id'] = pd.to_numeric(df_admissions['stay_id'], errors='coerce').fillna(0).astype(np.uint32)
         df_admissions['age'] = pd.to_numeric(df_admissions['age'], errors='coerce').fillna(0).astype(np.uint16)
         df_admissions['is_man'] = pd.to_numeric(df_admissions['is_man'], errors='coerce').fillna(0).astype(np.uint8)
