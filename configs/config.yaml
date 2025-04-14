@@ -3,8 +3,8 @@ model: informer  # model of experiment, options: [informer, informerstack, infor
 data: MEWS  # data
 # root_path_data: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path for data loading
 # root_path_data: /container/data # root path for data loading
-root_path_data: Z:/Datasets/AI-EWS  # root path for data loading
-root_path_save: Z:/Datasets/AI-EWS/exp  # root path for saving checkpoints and logs
+root_path_data: Z:/Datasets/AI-EWS  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis  # root path for data loading
+root_path_save: Z:/Datasets/AI-EWS/exp  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis/exp  # root path for saving checkpoints and logs
 use_preprocessed_data: true  # whether to use preprocessed .pkl files instead of raw CSVs
 # data_path: vitals_data.csv  
 data_path:
@@ -58,10 +58,10 @@ s_layers: "3,2,1"
 
 # Training configs
 batch_size: 256 #363
-learning_rate: 0.0002
+learning_rate: 0.0005
 loss: mse #mse
 loss_category: crossentropy
-loss_alpha: 0.1 #how much the mse weights
+loss_alpha: 0.3 #how much the mse weights
 loss_pos_weight: 20 #how much the positive class is weighted to tackle class imbalance 5% positive class -> 20 weight
 # no class imbalance? use 1
 lradj: type1
@@ -69,7 +69,7 @@ use_amp: false  # whether to use automatic mixed precision training
 
 num_workers: 0
 itr: 1
-train_epochs: 24
+train_epochs: 6
 patience: 3
 des: exp
 do_predict: false #TODO: what

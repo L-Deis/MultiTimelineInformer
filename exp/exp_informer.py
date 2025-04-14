@@ -1,5 +1,6 @@
 from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS
 from exp.exp_basic import Exp_Basic
+from exp.flexible_BCE_loss import FlexibleBCELoss
 from models.model import Informer, InformerStack
 from exp.multi_timeline_2 import categorical_collate
 
@@ -303,8 +304,7 @@ class Exp_Informer(Exp_Basic):
         elif criterion_name == 'l1':
             criterion = nn.L1Loss()
         elif criterion_name == 'crossentropy':
-            pos_weight = torch.tensor([weight], dtype=torch.float32, device=self.device)
-            criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+            criterion = FlexibleBCELoss(pos_weight=weight, device=self.device)
         else:
             criterion = nn.MSELoss()
         return criterion
