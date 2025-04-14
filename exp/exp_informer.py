@@ -6,6 +6,7 @@ from exp.multi_timeline_2 import categorical_collate
 
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric, CEL
+from utils.logger import print_flush
 
 import numpy as np
 
@@ -35,9 +36,9 @@ except ImportError:
 sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
 os.environ['PYTHONUNBUFFERED'] = '1'
 
-def print_flush(*args, **kwargs):
-    """Custom print function that ensures immediate output"""
-    print(*args, **kwargs, flush=True)
+# def print_flush(*args, **kwargs):
+#     """Custom print function that ensures immediate output"""
+#     print_flush(*args, **kwargs, flush=True)
 
 class Exp_Informer(Exp_Basic):
     def __init__(self, args):

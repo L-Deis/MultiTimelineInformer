@@ -2,14 +2,17 @@ import hydra
 import time
 import sys
 import os
+from utils.logger import print_flush
+# import mac_cuda_fake
+
 
 # Disable output buffering
 sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
 os.environ['PYTHONUNBUFFERED'] = '1'
 
-def print_flush(*args, **kwargs):
-    """Custom print function that ensures immediate output"""
-    print(*args, **kwargs, flush=True)
+# def print_flush(*args, **kwargs):
+#     """Custom print function that ensures immediate output"""
+#     print(*args, **kwargs, flush=True)
 
 print_flush(f"[{time.strftime('%H:%M:%S')}] Starting program...")
 from omegaconf import DictConfig, OmegaConf
