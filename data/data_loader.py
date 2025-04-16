@@ -4,6 +4,7 @@ import pandas as pd
 import gc
 import pickle
 import time
+import json
 
 from torch.utils.data import Dataset, DataLoader
 
@@ -303,8 +304,8 @@ class Dataset_MEWS(Dataset):
             f'{base_name}_{self.set_type}_seq{self.seq_len}_label{self.label_len}_pred{self.pred_len}.pkl'
         )
 
-    def _save_precollated_batches(self, collate_fn):
-        """Save pre-collated batches to a pickle file"""
+    def _save_precollated_batches(self, collate_fn, chunk_size=100):
+        """Save pre-collated batches to a pickle file in chunks to avoid memory issues"""
         try:
             # Create directory if it doesn't exist
             precollated_dir = os.path.join(self.root_path, 'precollated')
@@ -319,34 +320,77 @@ class Dataset_MEWS(Dataset):
                 collate_fn=collate_fn
             )
             
-            # Collect all batches
-            batches = []
-            for batch in data_loader:
-                batches.append(batch)
-            
-            # Save to file
+            # Process and save in chunks
             precollated_path = self._get_precollated_path()
-            with open(precollated_path, 'wb') as f:
-                pickle.dump(batches, f)
+            temp_dir = os.path.join(precollated_dir, 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
             
-            print_flush(f"[{time.strftime('%H:%M:%S')}] Saved {len(batches)} pre-collated batches to {precollated_path}")
-            return batches
+            total_batches = 0
+            current_chunk = []
+            chunk_index = 0
+            
+            for i, batch in enumerate(data_loader):
+                current_chunk.append(batch)
+                total_batches += 1
+                
+                # Save chunk when it reaches the specified size
+                if len(current_chunk) >= chunk_size:
+                    chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}.pkl')
+                    with open(chunk_path, 'wb') as f:
+                        pickle.dump(current_chunk, f)
+                    print_flush(f"[{time.strftime('%H:%M:%S')}] Saved chunk {chunk_index} with {len(current_chunk)} batches")
+                    current_chunk = []
+                    chunk_index += 1
+            
+            # Save any remaining batches
+            if current_chunk:
+                chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}.pkl')
+                with open(chunk_path, 'wb') as f:
+                    pickle.dump(current_chunk, f)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Saved final chunk {chunk_index} with {len(current_chunk)} batches")
+            
+            # Save metadata about the chunks
+            metadata = {
+                'total_batches': total_batches,
+                'chunk_size': chunk_size,
+                'num_chunks': chunk_index + 1,
+                'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+            }
+            with open(os.path.join(temp_dir, 'metadata.json'), 'w') as f:
+                json.dump(metadata, f)
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Saved {total_batches} batches in {chunk_index + 1} chunks")
+            return True
+            
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving pre-collated batches: {str(e)}")
             return None
 
     def _load_precollated_batches(self):
-        """Load pre-collated batches from file if it exists"""
+        """Load pre-collated batches from chunks"""
         try:
             precollated_path = self._get_precollated_path()
-            if not os.path.exists(precollated_path):
+            temp_dir = os.path.join(os.path.dirname(precollated_path), 'temp')
+            
+            if not os.path.exists(temp_dir):
                 return None
             
-            with open(precollated_path, 'rb') as f:
-                batches = pickle.load(f)
+            # Load metadata
+            with open(os.path.join(temp_dir, 'metadata.json'), 'r') as f:
+                metadata = json.load(f)
             
-            print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded {len(batches)} pre-collated batches from {precollated_path}")
-            return batches
+            # Load all chunks
+            all_batches = []
+            for i in range(metadata['num_chunks']):
+                chunk_path = os.path.join(temp_dir, f'chunk_{i}.pkl')
+                with open(chunk_path, 'rb') as f:
+                    chunk_batches = pickle.load(f)
+                    all_batches.extend(chunk_batches)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded chunk {i} with {len(chunk_batches)} batches")
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded {len(all_batches)} batches from {metadata['num_chunks']} chunks")
+            return all_batches
+            
         except Exception as e:
             print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading pre-collated batches: {str(e)}")
             return None
