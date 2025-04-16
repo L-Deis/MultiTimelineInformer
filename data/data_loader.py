@@ -193,7 +193,7 @@ class Dataset_ETT_minute(Dataset):
         return self.scaler.inverse_transform(data)
 
 
-class PrecollatedDataset(torch.utils.data.Dataset):
+class PrecollatedDataset(Dataset):
     def __init__(self, batches, shuffle=True):
         self.batches = batches
         self.shuffle = shuffle
