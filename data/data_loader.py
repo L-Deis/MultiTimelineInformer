@@ -3,12 +3,14 @@ import numpy as np
 import pandas as pd
 import gc
 import pickle
+import time
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from utils.tools import StandardScaler
 from utils.timefeatures import time_features
 from utils.targetvectors import generate_antibiotics_vector
+from utils.logger import print_flush
 
 import warnings
 
@@ -191,12 +193,28 @@ class Dataset_ETT_minute(Dataset):
         return self.scaler.inverse_transform(data)
 
 
+class PrecollatedDataset(torch.utils.data.Dataset):
+    def __init__(self, batches, shuffle=True):
+        self.batches = batches
+        self.shuffle = shuffle
+        self.indices = list(range(len(batches)))
+        if shuffle:
+            np.random.shuffle(self.indices)
+    
+    def __len__(self):
+        return len(self.batches)
+    
+    def __getitem__(self, idx):
+        return self.batches[self.indices[idx]]
+
+
 class Dataset_MEWS(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S',
                  data_path={"vitals": "vitals.csv", "admissions": "admissions.csv", "mappings": "mapping.csv",
                             "antibiotics": "antibiotics.csv"},
-                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False):
+                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False,
+                 use_precollated=False):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -223,6 +241,7 @@ class Dataset_MEWS(Dataset):
         self.root_path = root_path
         self.data_path = data_path
         self.use_preprocessed = use_preprocessed
+        self.use_precollated = use_precollated
         self.__read_data__()
 
     def _get_preprocessed_path(self):
@@ -274,6 +293,82 @@ class Dataset_MEWS(Dataset):
         except Exception as e:
             print(f"Error loading preprocessed data: {e}")
             return False
+
+    def _get_precollated_path(self):
+        """Get the path for the pre-collated batches file"""
+        base_name = os.path.splitext(os.path.basename(self.data_path))[0]
+        return os.path.join(
+            self.root_path,
+            'precollated',
+            f'{base_name}_{self.set_type}_seq{self.seq_len}_label{self.label_len}_pred{self.pred_len}.pkl'
+        )
+
+    def _save_precollated_batches(self, collate_fn):
+        """Save pre-collated batches to a pickle file"""
+        try:
+            # Create directory if it doesn't exist
+            precollated_dir = os.path.join(self.root_path, 'precollated')
+            os.makedirs(precollated_dir, exist_ok=True)
+            
+            # Create a DataLoader to get all batches
+            data_loader = DataLoader(
+                self,
+                batch_size=1,  # We'll handle batching ourselves
+                shuffle=False,
+                num_workers=0,
+                collate_fn=collate_fn
+            )
+            
+            # Collect all batches
+            batches = []
+            for batch in data_loader:
+                batches.append(batch)
+            
+            # Save to file
+            precollated_path = self._get_precollated_path()
+            with open(precollated_path, 'wb') as f:
+                pickle.dump(batches, f)
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Saved {len(batches)} pre-collated batches to {precollated_path}")
+            return batches
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving pre-collated batches: {str(e)}")
+            return None
+
+    def _load_precollated_batches(self):
+        """Load pre-collated batches from file if it exists"""
+        try:
+            precollated_path = self._get_precollated_path()
+            if not os.path.exists(precollated_path):
+                return None
+            
+            with open(precollated_path, 'rb') as f:
+                batches = pickle.load(f)
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded {len(batches)} pre-collated batches from {precollated_path}")
+            return batches
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading pre-collated batches: {str(e)}")
+            return None
+
+    def get_precollated_dataset(self, collate_fn):
+        """Get a dataset that yields pre-collated batches"""
+        if not self.use_precollated:
+            return self
+        
+        # Try to load existing pre-collated batches
+        batches = self._load_precollated_batches()
+        
+        # If no pre-collated batches exist, create and save them
+        if batches is None:
+            batches = self._save_precollated_batches(collate_fn)
+        
+        # If we still don't have batches, return the original dataset
+        if batches is None:
+            return self
+        
+        # Return a dataset that yields pre-collated batches
+        return PrecollatedDataset(batches, shuffle=(self.set_type == 0))  # Only shuffle for training set
 
     def __read_data__(self):
         if self.use_preprocessed and self._load_preprocessed_data():
