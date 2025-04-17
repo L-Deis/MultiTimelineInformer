@@ -297,7 +297,14 @@ class Dataset_MEWS(Dataset):
 
     def _get_precollated_path(self):
         """Get the path for the pre-collated batches file"""
-        base_name = os.path.splitext(os.path.basename(self.data_path))[0]
+        # Handle both string and dictionary data_path formats
+        if isinstance(self.data_path, dict):
+            # For MEWS dataset, use the vitals file name as base
+            base_name = os.path.splitext(os.path.basename(self.data_path["vitals"]))[0]
+        else:
+            # For other datasets, use the data_path directly
+            base_name = os.path.splitext(os.path.basename(self.data_path))[0]
+            
         return os.path.join(
             self.root_path,
             'precollated',
