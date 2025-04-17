@@ -297,19 +297,26 @@ class Dataset_MEWS(Dataset):
 
     def _get_precollated_path(self):
         """Get the path for the pre-collated batches file"""
-        # Handle both string and dictionary data_path formats
-        if isinstance(self.data_path, dict):
-            # For MEWS dataset, use the vitals file name as base
-            base_name = os.path.splitext(os.path.basename(self.data_path["vitals"]))[0]
-        else:
-            # For other datasets, use the data_path directly
-            base_name = os.path.splitext(os.path.basename(self.data_path))[0]
+        try:
+            # Handle DictConfig from Hydra
+            if hasattr(self.data_path, 'vitals'):
+                # For MEWS dataset with DictConfig
+                base_name = os.path.splitext(os.path.basename(str(self.data_path.vitals)))[0]
+            elif isinstance(self.data_path, dict) and 'vitals' in self.data_path:
+                # For MEWS dataset with regular dict
+                base_name = os.path.splitext(os.path.basename(str(self.data_path['vitals'])))[0]
+            else:
+                # For other datasets
+                base_name = os.path.splitext(os.path.basename(str(self.data_path)))[0]
             
-        return os.path.join(
-            self.root_path,
-            'precollated',
-            f'{base_name}_{self.set_type}_seq{self.seq_len}_label{self.label_len}_pred{self.pred_len}.pkl'
-        )
+            return os.path.join(
+                self.root_path,
+                'precollated',
+                f'{base_name}_{self.set_type}_seq{self.seq_len}_label{self.label_len}_pred{self.pred_len}.pkl'
+            )
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error getting precollated path: {str(e)}")
+            return None
 
     def _save_precollated_batches(self, collate_fn, chunk_size=100):
         """Save pre-collated batches to a pickle file in chunks to avoid memory issues"""
