@@ -3,12 +3,15 @@ import numpy as np
 import pandas as pd
 import gc
 import pickle
+import time
+import json
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from utils.tools import StandardScaler
 from utils.timefeatures import time_features
 from utils.targetvectors import generate_antibiotics_vector
+from utils.logger import print_flush
 
 import warnings
 
@@ -191,12 +194,28 @@ class Dataset_ETT_minute(Dataset):
         return self.scaler.inverse_transform(data)
 
 
+class PrecollatedDataset(Dataset):
+    def __init__(self, batches, shuffle=True):
+        self.batches = batches
+        self.shuffle = shuffle
+        self.indices = list(range(len(batches)))
+        if shuffle:
+            np.random.shuffle(self.indices)
+    
+    def __len__(self):
+        return len(self.batches)
+    
+    def __getitem__(self, idx):
+        return self.batches[self.indices[idx]]
+
+
 class Dataset_MEWS(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S',
                  data_path={"vitals": "vitals.csv", "admissions": "admissions.csv", "mappings": "mapping.csv",
                             "antibiotics": "antibiotics.csv"},
-                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False):
+                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False,
+                 use_precollated=False):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -223,6 +242,7 @@ class Dataset_MEWS(Dataset):
         self.root_path = root_path
         self.data_path = data_path
         self.use_preprocessed = use_preprocessed
+        self.use_precollated = use_precollated
         self.__read_data__()
 
     def _get_preprocessed_path(self):
@@ -274,6 +294,139 @@ class Dataset_MEWS(Dataset):
         except Exception as e:
             print(f"Error loading preprocessed data: {e}")
             return False
+
+    def _get_precollated_path(self):
+        """Get the path for the pre-collated batches file"""
+        try:
+            # Handle DictConfig from Hydra
+            if hasattr(self.data_path, 'vitals'):
+                # For MEWS dataset with DictConfig
+                base_name = os.path.splitext(os.path.basename(str(self.data_path.vitals)))[0]
+            elif isinstance(self.data_path, dict) and 'vitals' in self.data_path:
+                # For MEWS dataset with regular dict
+                base_name = os.path.splitext(os.path.basename(str(self.data_path['vitals'])))[0]
+            else:
+                # For other datasets
+                base_name = os.path.splitext(os.path.basename(str(self.data_path)))[0]
+            
+            return os.path.join(
+                self.root_path,
+                'precollated',
+                f'{base_name}_{self.set_type}_seq{self.seq_len}_label{self.label_len}_pred{self.pred_len}.pkl'
+            )
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error getting precollated path: {str(e)}")
+            return None
+
+    def _save_precollated_batches(self, collate_fn, chunk_size=100):
+        """Save pre-collated batches to a pickle file in chunks to avoid memory issues"""
+        try:
+            # Create directory if it doesn't exist
+            precollated_dir = os.path.join(self.root_path, 'precollated')
+            os.makedirs(precollated_dir, exist_ok=True)
+            
+            # Create a DataLoader to get all batches
+            data_loader = DataLoader(
+                self,
+                batch_size=1,  # We'll handle batching ourselves
+                shuffle=False,
+                num_workers=0,
+                collate_fn=collate_fn
+            )
+            
+            # Process and save in chunks
+            precollated_path = self._get_precollated_path()
+            temp_dir = os.path.join(precollated_dir, 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            total_batches = 0
+            current_chunk = []
+            chunk_index = 0
+            
+            for i, batch in enumerate(data_loader):
+                current_chunk.append(batch)
+                total_batches += 1
+                
+                # Save chunk when it reaches the specified size
+                if len(current_chunk) >= chunk_size:
+                    chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}.pkl')
+                    with open(chunk_path, 'wb') as f:
+                        pickle.dump(current_chunk, f)
+                    print_flush(f"[{time.strftime('%H:%M:%S')}] Saved chunk {chunk_index} with {len(current_chunk)} batches")
+                    current_chunk = []
+                    chunk_index += 1
+            
+            # Save any remaining batches
+            if current_chunk:
+                chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}.pkl')
+                with open(chunk_path, 'wb') as f:
+                    pickle.dump(current_chunk, f)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Saved final chunk {chunk_index} with {len(current_chunk)} batches")
+            
+            # Save metadata about the chunks
+            metadata = {
+                'total_batches': total_batches,
+                'chunk_size': chunk_size,
+                'num_chunks': chunk_index + 1,
+                'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+            }
+            with open(os.path.join(temp_dir, 'metadata.json'), 'w') as f:
+                json.dump(metadata, f)
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Saved {total_batches} batches in {chunk_index + 1} chunks")
+            return True
+            
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error saving pre-collated batches: {str(e)}")
+            return None
+
+    def _load_precollated_batches(self):
+        """Load pre-collated batches from chunks"""
+        try:
+            precollated_path = self._get_precollated_path()
+            temp_dir = os.path.join(os.path.dirname(precollated_path), 'temp')
+            
+            if not os.path.exists(temp_dir):
+                return None
+            
+            # Load metadata
+            with open(os.path.join(temp_dir, 'metadata.json'), 'r') as f:
+                metadata = json.load(f)
+            
+            # Load all chunks
+            all_batches = []
+            for i in range(metadata['num_chunks']):
+                chunk_path = os.path.join(temp_dir, f'chunk_{i}.pkl')
+                with open(chunk_path, 'rb') as f:
+                    chunk_batches = pickle.load(f)
+                    all_batches.extend(chunk_batches)
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded chunk {i} with {len(chunk_batches)} batches")
+            
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Loaded {len(all_batches)} batches from {metadata['num_chunks']} chunks")
+            return all_batches
+            
+        except Exception as e:
+            print_flush(f"[{time.strftime('%H:%M:%S')}] Error loading pre-collated batches: {str(e)}")
+            return None
+
+    def get_precollated_dataset(self, collate_fn):
+        """Get a dataset that yields pre-collated batches"""
+        if not self.use_precollated:
+            return self
+        
+        # Try to load existing pre-collated batches
+        batches = self._load_precollated_batches()
+        
+        # If no pre-collated batches exist, create and save them
+        if batches is None:
+            batches = self._save_precollated_batches(collate_fn)
+        
+        # If we still don't have batches, return the original dataset
+        if batches is None:
+            return self
+        
+        # Return a dataset that yields pre-collated batches
+        return PrecollatedDataset(batches, shuffle=(self.set_type == 0))  # Only shuffle for training set
 
     def __read_data__(self):
         if self.use_preprocessed and self._load_preprocessed_data():
