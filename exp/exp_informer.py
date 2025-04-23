@@ -1,4 +1,4 @@
-from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS, PrecollatedDataset
+from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS
 from exp.exp_basic import Exp_Basic
 from exp.flexible_BCE_loss import FlexibleBCELoss
 from models.model import Informer, InformerStack
@@ -246,14 +246,14 @@ class Exp_Informer(Exp_Basic):
             # Data = Dataset_Pred # DEBUG: Disable for now
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
-        
+
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating dataset with parameters:")
         print_flush(f"    - Root path data: {args.root_path_data}")
         print_flush(f"    - Data path: {args.data_path}")
         print_flush(f"    - Sequence length: {args.seq_len}")
         print_flush(f"    - Label length: {args.label_len}")
         print_flush(f"    - Prediction length: {args.pred_len}")
-        
+
         data_set = Data(
             root_path=args.root_path_data,
             data_path=args.data_path,
@@ -265,34 +265,24 @@ class Exp_Informer(Exp_Basic):
             timeenc=timeenc,
             freq=freq,
             cols=args.cols,
-            use_preprocessed=args.use_preprocessed_data,
-            use_precollated=args.use_precollated_data
+            use_preprocessed=args.use_preprocessed_data if hasattr(args, 'use_preprocessed_data') else False,
         )
         print_flush(f"[{time.strftime('%H:%M:%S')}] {flag} dataset size: {len(data_set)}")
-        
+
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating DataLoader...")
         print_flush(f"    - Batch size: {batch_size}")
         print_flush(f"    - Shuffle: {shuffle_flag}")
         print_flush(f"    - Num workers: {args.num_workers}")
         print_flush(f"    - Drop last: {drop_last}")
-        
+
         categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)
-        
-        # Get the appropriate dataset (either original or pre-collated)
-        dataset = data_set.get_precollated_dataset(categorical_collate_fn)
-        
-        # If we're using the original dataset, we need the collate_fn
-        # If we're using pre-collated batches, we don't need it since the batches are already collated
-        collate_fn = None if isinstance(dataset, PrecollatedDataset) else categorical_collate_fn
-        
         data_loader = DataLoader(
-            dataset,
+            data_set,
             batch_size=batch_size,
             shuffle=shuffle_flag,
             num_workers=args.num_workers,
             drop_last=drop_last,
-            collate_fn=collate_fn
-        )
+            collate_fn = categorical_collate_fn)
 
         return data_set, data_loader
 
