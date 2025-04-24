@@ -450,10 +450,10 @@ class Dataset_MEWS(Dataset):
             'stay_id',
             'age',
             'is_man',
-            'dbc_dept',
-            'dbc_diag',
-            'TrajectDiagnoseCcsDiagnosehoofdclusterNaam',
-            'TrajectDiagnoseCcsDiagnosegroepNaam'
+#            'dbc_dept',
+#            'dbc_diag',
+#            'TrajectDiagnoseCcsDiagnosehoofdclusterNaam',
+#            'TrajectDiagnoseCcsDiagnosegroepNaam'
         ]
         df_admissions = df_admissions[cols_to_keep]
 
@@ -461,10 +461,10 @@ class Dataset_MEWS(Dataset):
         df_admissions['stay_id'] = pd.to_numeric(df_admissions['stay_id'], errors='coerce').fillna(0).astype(np.uint32)
         df_admissions['age'] = pd.to_numeric(df_admissions['age'], errors='coerce').fillna(0).astype(np.uint16)
         df_admissions['is_man'] = pd.to_numeric(df_admissions['is_man'], errors='coerce').fillna(0).astype(np.uint8)
-        df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(
-            np.uint16)
-        df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(
-            np.uint16)
+ #       df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(
+ #           np.uint16)
+ #       df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(
+ #           np.uint16)
 
         # For each categorical feature in static_data, it needs to be mapped to [0,1,2,...,n-1] where n is the number of unique categories
         N_NUM = 1  #Number of numerical features, placed before each categorical feature, every following feature is categorical

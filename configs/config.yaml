@@ -50,9 +50,17 @@ padding: 0
 condition: true #Whether to condition the model on the static variables
 n_cond_num_in: 1 #How many numerical variables to condition on
 n_cond_num_out: 2 #Embedding size for numerical variables
-n_cond_cat_in: "2,32,605,17,145" #How many categories for each categorical variable,
+n_cond_cat_in: "2" #How many categories for each categorical variable,
   # at least the exact number of categories! More is okay, but slows convergence down
-n_cond_cat_out: "2,4,8,3,6" #Embedding size for each categorical variable
+n_cond_cat_out: "2" #Embedding size for each categorical variable
+
+#Conditionning
+# condition: true #Whether to condition the model on the static variables
+#n_cond_num_in: 1 #How many numerical variables to condition on
+#n_cond_num_out: 2 #Embedding size for numerical variables
+#n_cond_cat_in: "2,32,605,17,145" #How many categories for each categorical variable,
+  # at least the exact number of categories! More is okay, but slows convergence down
+#n_cond_cat_out: "2,4,8,3,6" #Embedding size for each categorical variable
 
 # s_layers is often used for InformerStack or advanced configs (optional)
 s_layers: "3,2,1"
