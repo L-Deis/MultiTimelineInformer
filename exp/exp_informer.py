@@ -329,6 +329,7 @@ class Exp_Informer(Exp_Basic):
         total_loss_dict = {"loss_mse": [], "loss_ce": []}
         preds_y = []
         trues_y = []
+        ids_y = []
         preds_antibio = []
         trues_antibio = []
 
@@ -351,6 +352,7 @@ class Exp_Informer(Exp_Basic):
                 trues_y.append(true_y.detach().cpu().numpy())
                 preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
                 trues_antibio.append(true_antibio.detach().cpu().numpy())
+                ids_y.append(batch_y_id.detach().cpu().numpy())
 
         total_loss = np.average(total_loss) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
@@ -358,7 +360,7 @@ class Exp_Informer(Exp_Basic):
         self.model.train()
 
         if return_preds:
-            return total_loss, total_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio
+            return total_loss, total_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio, ids_y
         return total_loss, total_loss_dict
 
     def train(self, setting):
@@ -482,7 +484,7 @@ class Exp_Informer(Exp_Basic):
             print_flush("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss) if train_loss else 0.0
             vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader, return_preds=False)
-            test_loss, test_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio = self.vali(test_data, test_loader, return_preds=True)
+            test_loss, test_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio, ids_y = self.vali(test_data, test_loader, return_preds=True)
 
             print_flush("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
@@ -536,12 +538,14 @@ class Exp_Informer(Exp_Basic):
                     trues_y = np.concatenate(trues_y, axis=0)
                     preds_antibio = np.concatenate(preds_antibio, axis=0)
                     trues_antibio = np.concatenate(trues_antibio, axis=0)
+                    ids_y = np.concatenate(ids_y, axis=0)
 
                     # Save the predictions and true values
                     np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
                     np.save(os.path.join(epoch_dir, 'trues_y.npy'), trues_y)
                     np.save(os.path.join(epoch_dir, 'preds_antibio.npy'), preds_antibio)
                     np.save(os.path.join(epoch_dir, 'trues_antibio.npy'), trues_antibio)
+                    np.save(os.path.join(epoch_dir, 'id_y.npy'), ids_y)
 
                     # Save metrics for this epoch
                     mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
@@ -620,6 +624,7 @@ class Exp_Informer(Exp_Basic):
         trues_y = []
         preds_antibio = []
         trues_antibio = []
+        ids_y = []
 
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(test_loader):
             # Skip empty batches
@@ -633,6 +638,7 @@ class Exp_Informer(Exp_Basic):
             trues_y.append(true_y.detach().cpu().numpy())
             preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
             trues_antibio.append(true_antibio.detach().cpu().numpy())
+            ids_y.append(batch_y_id.detach().cpu().numpy())
 
         # Safety check to ensure we have predictions before trying to process them
         if not preds_y:
@@ -643,6 +649,7 @@ class Exp_Informer(Exp_Basic):
         trues_y = np.concatenate(trues_y, axis=0)
         preds_antibio = np.concatenate(preds_antibio, axis=0)
         trues_antibio = np.concatenate(trues_antibio, axis=0)
+        ids_y = np.concatenate(ids_y, axis=0)
 
         # result save
         folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
@@ -674,6 +681,7 @@ class Exp_Informer(Exp_Basic):
         np.save(folder_path+'true_y.npy', trues_y)
         np.save(folder_path+'pred_antibios.npy', preds_antibio)
         np.save(folder_path+'true_antibios.npy', trues_antibio)
+        np.save(folder_path+'id_y.npy', ids_y)
 
         return
 
