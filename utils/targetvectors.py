@@ -166,7 +166,7 @@ def generate_antibiotics_vector_old(df_antibiotics,
         full_time_range = pd.date_range(
             start=stay_start,
             end=stay_end,
-            freq='1min'  # 1 minute frequency #TODO: Make frequency a parameter
+            freq=freq
         )
 
         # Create a new dataframe with the full time range
@@ -175,7 +175,7 @@ def generate_antibiotics_vector_old(df_antibiotics,
 
         # In stay_antibios_df, modulo it out to our current freq to make sure it will always match a time in the full_time_range
         stay_antibios_df['administration_time'] = stay_antibios_df['administration_time'].dt.floor(
-            '1min')  # TODO: Make frequency a parameter
+            freq)
 
         # Find the start and end time of each administrations (and considering gaps), fill with 1s in the new dataframe based on this
         prev_time = stay_antibios_df['administration_time'].iloc[0]

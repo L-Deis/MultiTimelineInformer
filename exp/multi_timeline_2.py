@@ -87,7 +87,8 @@ def categorical_collate(batches, timeenc, freq):
             first_valid_index = np.where(valid_mask)[0][0]
             
             #1 minutes in pandas datetime
-            delta_time = pd.Timedelta(minutes=1) #TODO: Make it a parameter that can change based on arguments
+            # delta_time = pd.Timedelta(minutes=1) #TODO: Make it a parameter that can change based on arguments
+            delta_time = pd.Timedelta(freq)
             #Fix every invalid timestamps based on their index, 1 min offset each, based on the first valid timestamp
             math_vec = np.arange(-first_valid_index, 0)
             timeline.loc[~valid_mask, 'date'] = first_valid + delta_time * math_vec

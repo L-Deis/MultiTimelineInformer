@@ -196,7 +196,7 @@ class Dataset_MEWS(Dataset):
                  features='S',
                  data_path={"vitals": "vitals.csv", "admissions": "admissions.csv", "mappings": "mapping.csv",
                             "antibiotics": "antibiotics.csv"},
-                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False):
+                 target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False, data_compress=None):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -223,6 +223,7 @@ class Dataset_MEWS(Dataset):
         self.root_path = root_path
         self.data_path = data_path
         self.use_preprocessed = use_preprocessed
+        self.data_compress = data_compress
         self.__read_data__()
 
     def _get_preprocessed_path(self):
@@ -268,12 +269,27 @@ class Dataset_MEWS(Dataset):
             self.data_static = preprocessed_data['data_static']
             self.data_antibiotics = preprocessed_data['data_antibiotics']
             self.scaler = preprocessed_data['scaler']
+
+            self._compress_data()
             
             print(f"Loaded preprocessed data from {load_path}")
             return True
         except Exception as e:
             print(f"Error loading preprocessed data: {e}")
             return False
+
+    def _compress_data(self):
+        #if datafreq is not 1min, skip every x row
+        if self.data_compress == "skip" and pd.Timedelta(self.freq) != pd.Timedelta(minutes=1):
+            self.data_antibiotics = self.data_antibiotics[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
+            self.data_x = self.data_x[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
+            self.data_y = self.data_y[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
+            self.data_stamp = self.data_stamp[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
+            self.data_id = self.data_id[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
+        if self.data_compress == "mean" and pd.Timedelta(self.freq) != pd.Timedelta(minutes=1):
+            factor = int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))
+            #take the mean of the factor//2 points before and after the timestep
+            #TODO: Implement summing up the data
 
     def __read_data__(self):
         if self.use_preprocessed and self._load_preprocessed_data():
@@ -341,7 +357,7 @@ class Dataset_MEWS(Dataset):
             full_time_range = pd.date_range(
                 start=patient_df.date.min(),
                 end=patient_df.date.max(),
-                freq='1min'  # 1 minute frequency #TODO: Make frequency a parameter
+                freq=self.freq, #TODO: Check if freq is correct
             )
 
             #Create a new dataframe with the full time range
@@ -513,7 +529,7 @@ class Dataset_MEWS(Dataset):
         # Sort antibiotics by stay_id and date
         df_antibiotics = df_antibiotics.sort_values(by=['stay_id', 'administration_time'])
 
-        self.data_antibiotics = generate_antibiotics_vector(df_antibiotics, df_id)
+        self.data_antibiotics = generate_antibiotics_vector(df_antibiotics, df_id, freq=self.freq) #TODO: Check if freq is correct
 
         # del df_antibiotics to save memory
         del df_antibiotics
@@ -533,6 +549,19 @@ class Dataset_MEWS(Dataset):
         # After processing all data, save it if using preprocessed mode
         if self.use_preprocessed:
             self._save_preprocessed_data()
+
+        self._compress_data()
+
+        # --- DEBUG ---
+        # PRINT SHAPE OF EACH DATA
+        print("DATALOADER: Shapes of each data after compression")
+        print(f"data_x: {self.data_x.shape}")
+        print(f"data_y: {self.data_y.shape}")
+        print(f"data_stamp: {self.data_stamp.shape}")
+        print(f"data_id: {self.data_id.shape}")
+        # print(f"data_static: {self.data_static.shape}")
+        print(f"data_antibiotics: {self.data_antibiotics.shape}")
+        # --- DEBUG END ---
 
     def __getitem__(self, index):
         s_begin = index

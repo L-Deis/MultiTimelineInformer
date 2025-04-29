@@ -73,7 +73,8 @@ def main(args: DictConfig):
 
     # 5. Adjust frequencies
     args.detail_freq = args.freq
-    args.freq = args.freq[-1:]  # e.g., "h" from "15min"
+    # args.freq = args.freq[-1:]  # e.g., "h" from "15min"
+    args.freq = args.freq  # e.g., "h" from "15min"
     print_flush(f"[{time.strftime('%H:%M:%S')}] Frequency settings - Detail: {args.detail_freq}, Base: {args.freq}")
 
     print_flush(f"\n[{time.strftime('%H:%M:%S')}] Full Configuration (OmegaConf):")
