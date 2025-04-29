@@ -775,7 +775,8 @@ class Exp_Informer(Exp_Basic):
 
         #Concatenate batch_y (shape: (batch_size, len, 6)) with batch_antibio (shape: (batch_size, len))
         if batch_antibio is not None:
-            batch_label = torch.cat([batch_y, batch_antibio.unsqueeze(-1)], dim=-1)
+            # batch_label = torch.cat([batch_y, batch_antibio.unsqueeze(-1)], dim=-1)
+            batch_label = torch.cat([batch_y, torch.zeros_like(batch_antibio).unsqueeze(-1)], dim=-1)
         else:
             batch_label = batch_y
         #Resulting shape: (batch_size, len, 7)

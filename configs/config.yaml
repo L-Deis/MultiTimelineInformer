@@ -23,8 +23,8 @@ logging_path: logs # location of logs (relative to root_path_save)
 save_every: 1 # save the model every x epochs
 
 # TODO: currently, the value to predict is fetched from the next row
-seq_len: 48    # input sequence length of the Informer encoder (dim 1)
-label_len: 0  # start-token length of the Informer decoder (dim 2)
+seq_len: 48 # input sequence length of the Informer encoder (dim 1)
+label_len: 24 # start-token length of the Informer decoder (dim 2)
 # TODO label_len ALLOWS FOR DATA LEAKAGE ON ALL VALUES ABOVE 0, FORCE THIS TO 0
 pred_len: 12   # prediction sequence length (dim 3). Informer decoder input = concat[start token series(label_len), zero padding series(pred_len)]
 # Informer decoder input: concat[start token series(label_len), zero padding series(pred_len)]
