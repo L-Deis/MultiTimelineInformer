@@ -1,14 +1,26 @@
 import os
+import numpy as np
 import pandas as pd
+import gc
+import pickle
 
+from torch.utils.data import Dataset
+
+from utils.tools import StandardScaler
+from utils.timefeatures import time_features
+from utils.targetvectors import generate_infections_vector
+
+import warnings
+
+warnings.filterwarnings('ignore')
 
 class Dataset_eICU(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S',
                  data_path={
                      "vitals": "vitals.pkl",
-                     "patient": "patient.csv",
-                     "infection": "infection.csv",
+                     "patients": "patient.csv",
+                     "infections": "infection.csv",
                  },
                  target='OT', scale=True, inverse=False, timeenc=0, freq='h', cols=None, use_preprocessed=False,
                  data_compress=None):
@@ -116,34 +128,26 @@ class Dataset_eICU(Dataset):
         df_raw = pd.read_csv(os.path.join(
             self.root_path,
             self.data_path["vitals"]),
-            usecols=['date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
-                     'stay_id'],  # Don't load mdn to save memory
+            usecols=['minutes_since_admission', 'HR', 'respiratory_rate', 'oxygen_saturation', 'SYS', 'DIA', 'BP_mean',
+                    'stay_id'], 
+                # 'date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
+                    #  'stay_id'],  # Don't load mdn to save memory
             # nrows=100000,  #DEBUG: Read only the first 1000 lines
         )
 
-        # Get head
-        # print("Head of df_raw",df_raw.head())
+        # Remove every row where minutes_since_admission is negative
+        df_raw = df_raw[df_raw['minutes_since_admission'] >= 0]
+        # Sort by ascending stay_id and minutes_since_admission
+        df_raw = df_raw.sort_values(by=['stay_id', 'minutes_since_admission'])
 
-        # DEBUG: Load mappings df, to keep only the stay_id in df_raw that are in df_mappings
-        df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                               self.data_path["mappings"]),
-                                  usecols=['stay_id'])  # Only load stay_id to save memory
-        # Create a list of all the stay_id that are in df_mappings
-        stay_ids = df_mappings['stay_id'].unique()
-        # Filter the df_raw to keep only the stay_id that are in stay_ids
-        df_raw = df_raw[df_raw['stay_id'].isin(stay_ids)]
+        # Create date column from minutes_since_admission
+        df_raw['date'] = pd.to_datetime(df_raw['minutes_since_admission'], unit='m', errors='coerce')
+        df_raw.drop(columns=['minutes_since_admission'], inplace=True)
 
-        # inner join df_mappings and df_admissions on double key 'mdn' and 'stay_id'
-        # df_mappings = pd.merge(df_mappings, df_raw, how='inner', left_on=['mdn', 'stay_id'], right_on=['mdn', 'stay_id'])
-
-        # --- MEWS Specific pre-processing ---
+        # --- eICU/MEWS Specific pre-processing ---
         # Print all columns names
         print("Columns names", df_raw.columns)
-        # Drop mdn column
-        # df_raw.drop(columns=['mdn'], inplace=True)
-        # Rename date_time to date
-        df_raw.rename(columns={'date_time': 'date'}, inplace=True)
-        # Ensure the datatype of each column is float, except date_time which is datetime
+        # Ensure the datatype of each column is float, except date which is datetime
         for col in df_raw.columns:
             if col == 'date':
                 df_raw[col] = pd.to_datetime(df_raw[col])
@@ -152,7 +156,7 @@ class Dataset_eICU(Dataset):
                 df_raw[col].fillna(0, inplace=True)
                 # Convert the column to int
                 df_raw[col] = df_raw[col].astype(np.uint32)
-            elif col in ['HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld']:
+            elif col in ['HR', 'respiratory_rate', 'oxygen_saturation', 'SYS', 'DIA', 'BP_mean']:
                 # Turn the NaN to 0
                 df_raw[col].fillna(0, inplace=True)
                 # Convert the column to int
@@ -184,6 +188,7 @@ class Dataset_eICU(Dataset):
 
             # Fill the NaN values with 0
             patient_complete_df = patient_complete_df.fillna(0)
+            #TODO: Also add a mode to fill the NaN values with the closest value
 
             # Append the new dataframe to the list
             full_range_dfs.append(patient_complete_df)
@@ -240,6 +245,8 @@ class Dataset_eICU(Dataset):
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
 
+        stay_ids_to_keep = df_raw['stay_id'].unique()
+
         # Del df to save memory
         del df_raw
         gc.collect()
@@ -257,14 +264,10 @@ class Dataset_eICU(Dataset):
 
         # --- STATIC ---
         print("DATALOADER: Start Loading Admissions...")
-        df_admissions = pd.read_csv(os.path.join(self.root_path,
-                                                 self.data_path["admissions"]))
-        df_mappings = pd.read_csv(os.path.join(self.root_path,
-                                               self.data_path["mappings"]),
-                                  usecols=['stay_id', 'admission_id', 'mdn'])
-        # inner join df_mappings and df_admissions on double key 'mdn' and 'admission_id'
-        df_admissions = pd.merge(df_mappings, df_admissions, how='inner', left_on=['mdn', 'admission_id'],
-                                 right_on=['mdn', 'admission_id'])
+        df_patients = pd.read_csv(os.path.join(self.root_path,
+                                                 self.data_path["patients"]))
+        # Filter out patients that are not in the stay_ids_to_keep
+        df_patients = df_patients[df_patients['stay_id'].isin(stay_ids_to_keep)]
 
         # create new column is_man based on PatientGeslacht (M=1, V=0)
         def is_man(gender):
@@ -273,78 +276,74 @@ class Dataset_eICU(Dataset):
             else:
                 return 0
 
-        df_admissions["is_man"] = df_admissions["PatientGeslacht"].map(is_man)
+        df_patients["is_man"] = df_patients["gender"].map(is_man)
         # Rename columns: 'TrajectSpecialismeAgbCode' -> 'dbc_dept', 'TrajectDiagnoseCode' -> 'dbc_diag'
-        df_admissions = df_admissions.rename(
-            columns={'TrajectSpecialismeAgbCode': 'dbc_dept', 'TrajectDiagnoseCode': 'dbc_diag'})
         cols_to_keep = [
             'stay_id',
             'age',
             'is_man',
-            #            'dbc_dept',
-            #            'dbc_diag',
-            #            'TrajectDiagnoseCcsDiagnosehoofdclusterNaam',
-            #            'TrajectDiagnoseCcsDiagnosegroepNaam'
         ]
-        df_admissions = df_admissions[cols_to_keep]
+        df_patients = df_patients[cols_to_keep]
 
         # Make sure all numbers are ints
-        df_admissions['stay_id'] = pd.to_numeric(df_admissions['stay_id'], errors='coerce').fillna(0).astype(np.uint32)
-        df_admissions['age'] = pd.to_numeric(df_admissions['age'], errors='coerce').fillna(0).astype(np.uint16)
-        df_admissions['is_man'] = pd.to_numeric(df_admissions['is_man'], errors='coerce').fillna(0).astype(np.uint8)
-        #       df_admissions['dbc_dept'] = pd.to_numeric(df_admissions['dbc_dept'], errors='coerce').fillna(0).astype(
-        #           np.uint16)
-        #       df_admissions['dbc_diag'] = pd.to_numeric(df_admissions['dbc_diag'], errors='coerce').fillna(0).astype(
-        #           np.uint16)
+        df_patients['stay_id'] = pd.to_numeric(df_patients['stay_id'], errors='coerce').fillna(0).astype(np.uint32)
+        df_patients['age'] = pd.to_numeric(df_patients['age'], errors='coerce').fillna(0).astype(np.uint16)
+        df_patients['is_man'] = pd.to_numeric(df_patients['is_man'], errors='coerce').fillna(0).astype(np.uint8)
 
         # For each categorical feature in static_data, it needs to be mapped to [0,1,2,...,n-1] where n is the number of unique categories
-        N_NUM = 1  # Number of numerical features, placed before each categorical feature, every following feature is categorical
+        N_NUM = 1  #TODO: Pass the argument from config # Number of numerical features, placed before each categorical feature, every following feature is categorical
         # -> Skip 'stay_id' and n_num afterwards;
         # Get columns names
-        cols_static = list(df_admissions.columns)
+        cols_static = list(df_patients.columns)
         cols_static.remove('stay_id')
         cols_static = cols_static[N_NUM:]
         for col in cols_static:
             # Get unique values
-            unique_values = df_admissions[col].unique()
+            unique_values = df_patients[col].unique()
             # Get n unique and print it
             n_unique = len(unique_values)
             print(f"Unique categories for {col}: {n_unique}")
             # Map the unique values to a list of integers
             mapping = dict(zip(unique_values, range(n_unique)))
             # Map the column to the new values
-            df_admissions[col] = df_admissions[col].map(mapping)
+            df_patients[col] = df_patients[col].map(mapping)
 
         # self.data_static = Dict: key=[stay_id], value=[age, is_man, dbc_dept, dbc_diag]
-        self.data_static = df_admissions.set_index('stay_id').T.to_dict('list')
+        self.data_static = df_patients.set_index('stay_id').T.to_dict('list')
 
-        # del df_admissions to save memory
-        del df_admissions
+        # del df_patients to save memory
+        del df_patients
         gc.collect()
 
         # --- STATIC END ---
 
         # --- ANTIBIOTICS ---
         print("DATALOADER: Start Loading Antibiotics...")
-        df_antibiotics = pd.read_csv(os.path.join(self.root_path,
-                                                  self.data_path["antibiotics"]))
-
-        # For now get back stay_id from matching df_antibiotics with df_mapping on mdn
-        # It also keeps only the mdn/stay_id that are in df_mappings, just like for the vitals.
-        df_antibiotics = df_mappings.merge(df_antibiotics, how='left', left_on=['mdn'], right_on=['mdn'])
+        df_infections = pd.read_csv(os.path.join(self.root_path,
+                                                  self.data_path["infections"]))
+        # Filter out infections that are not in the stay_ids_to_keep
+        df_infections = df_infections[df_infections['stay_id'].isin(stay_ids_to_keep)]
 
         # Keep only stay_ids that are in df_id
-        df_antibiotics = df_antibiotics[df_antibiotics['stay_id'].isin(df_id['stay_id'])]
+        df_infections = df_infections[df_infections['stay_id'].isin(df_id['stay_id'])]
 
         # Keep only the columns that are needed: ['mdn', 'stay_id', 'description', 'status', 'administration_time']
-        df_antibiotics = df_antibiotics[['stay_id', 'description', 'status', 'administration_time']]
+        df_infections = df_infections[['stay_id', 'start_offset', 'end_offset']]
 
-        # Make sure the administration_time is a datetime
-        df_antibiotics['administration_time'] = pd.to_datetime(df_antibiotics['administration_time'])
-        # Sort antibiotics by stay_id and date
-        df_antibiotics = df_antibiotics.sort_values(by=['stay_id', 'administration_time'])
+        # Sort by ascending stay_id and start_offset
+        df_infections = df_infections.sort_values(by=['stay_id', 'start_offset'])
+        
+        # Frist, if end_offset is negative, drop the row, keep also the nulls
+        df_infections = df_infections[df_infections['end_offset'] >= 0 | df_infections['end_offset'].isna()]
+        # End, if start_offset is negative, set it to 0
+        df_infections['start_offset'] = df_infections['start_offset'].apply(lambda x: 0 if x < 0 else x)
 
-        self.data_infections = generate_antibiotics_vector(df_antibiotics, df_id,
+        # Convert start_offset and end_offset to date_start and date_end
+        df_infections['date_start'] = pd.to_datetime(df_raw['start_offset'], unit='m', errors='coerce')
+        df_infections['date_end'] = pd.to_datetime(df_raw['end_offset'], unit='m', errors='coerce')
+        df_infections.drop(columns=['start_offset', 'end_offset'], inplace=True)
+
+        self.data_infections = generate_infections_vector(df_infections, df_id,
                                                            freq=self.freq)  # TODO: Check if freq is correct
 
         # del df_antibiotics to save memory

@@ -9,15 +9,20 @@ use_preprocessed_data: true  # whether to use preprocessed .pkl files instead of
 use_precollated_data: false  # whether to use pre-collated .pkl files instead of raw CSVs
 # data_path: vitals_data.csv  
 data_path:
-  vitals: vitals_data.csv # data file #timeseries_for_informer.csv
-  mappings: mapping_everything.csv  # mapping data file
-  admissions: admissions_data_prepped.csv  # static data file
-  antibiotics: filtered_antibiotics.csv  # infections data file
+  # --- MEWS data ---
+  # vitals: vitals_data.csv # data file #timeseries_for_informer.csv
+  # mappings: mapping_everything.csv  # mapping data file
+  # admissions: admissions_data_prepped.csv  # static data file
+  # antibiotics: filtered_antibiotics.csv  # infections data file
+  # --- eICU data ---
+  vitals: vitals_data.csv
+  patients: patient_data.csv
+  infections: infection_episodes.csv
 features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
 target: HR  # target feature in S or MS task
 # freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
 freq: 5min
-data_compress: skip #none, skip, mean #TODO: Implement mean
+data_compress: none #none, skip, mean #TODO: Implement mean
 checkpoints_path: informer_checkpoints  # location of model checkpoints (relative to root_path_save)
 # TODO add and make sure it's processed properly:
 # resume: True # load the last checkpoint with the same configuration
@@ -38,8 +43,8 @@ c_out: 7   # output size
 factor: 5  # ProbSparse attention factor
 d_model: 512  # dimension of the model
 n_heads: 8  # number of attention heads
-e_layers: 4 #2  # number of encoder layers #TODO: More if cluster
-d_layers: 4 #2  # number of decoder layers #TODO: More if cluster
+e_layers: 2 #2  # number of encoder layers #TODO: More if cluster
+d_layers: 2 #2  # number of decoder layers #TODO: More if cluster
 d_ff: 2048  # dimension of FCN in the model
 dropout: 0.05  # dropout rate
 attn: prob  # attention type in encoder, options: [prob, full]
@@ -70,7 +75,7 @@ n_cond_cat_out: "2" #Embedding size for each categorical variable
 s_layers: "3,2,1"
 
 # Training configs
-batch_size: 256 #363
+batch_size: 312 #363
 learning_rate: 0.0005
 loss: mse #mse
 loss_category: crossentropy

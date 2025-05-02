@@ -483,7 +483,7 @@ class Dataset_MEWS(Dataset):
  #           np.uint16)
 
         # For each categorical feature in static_data, it needs to be mapped to [0,1,2,...,n-1] where n is the number of unique categories
-        N_NUM = 1  #Number of numerical features, placed before each categorical feature, every following feature is categorical
+        N_NUM = 1 #TODO: Pass the argument from config #Number of numerical features, placed before each categorical feature, every following feature is categorical
         #-> Skip 'stay_id' and n_num afterwards;
         #Get columns names
         cols_static = list(df_admissions.columns)
