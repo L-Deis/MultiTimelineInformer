@@ -239,7 +239,7 @@ class Dataset_MEWS(Dataset):
             'data_stamp': self.data_stamp,
             'data_id': self.data_id,
             'data_static': self.data_static,
-            'data_antibiotics': self.data_antibiotics,
+            'data_infections': self.data_antibiotics,
             'scaler': self.scaler
         }
         
@@ -267,7 +267,7 @@ class Dataset_MEWS(Dataset):
             self.data_stamp = preprocessed_data['data_stamp']
             self.data_id = preprocessed_data['data_id']
             self.data_static = preprocessed_data['data_static']
-            self.data_antibiotics = preprocessed_data['data_antibiotics']
+            self.data_antibiotics = preprocessed_data['data_infections']
             self.scaler = preprocessed_data['scaler']
 
             self._compress_data()
@@ -543,7 +543,7 @@ class Dataset_MEWS(Dataset):
         print(f"data_stamp: {self.data_stamp.shape}")
         print(f"data_id: {self.data_id.shape}")
         # print(f"data_static: {self.data_static.shape}")
-        print(f"data_antibiotics: {self.data_antibiotics.shape}")
+        print(f"data_infections: {self.data_antibiotics.shape}")
         # --- DEBUG END ---
 
         # After processing all data, save it if using preprocessed mode
@@ -560,7 +560,7 @@ class Dataset_MEWS(Dataset):
         print(f"data_stamp: {self.data_stamp.shape}")
         print(f"data_id: {self.data_id.shape}")
         # print(f"data_static: {self.data_static.shape}")
-        print(f"data_antibiotics: {self.data_antibiotics.shape}")
+        print(f"data_infections: {self.data_antibiotics.shape}")
         # --- DEBUG END ---
 
     def __getitem__(self, index):

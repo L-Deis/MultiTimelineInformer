@@ -136,95 +136,93 @@ def generate_antibiotics_vector(df_antibiotics,
     return pd.concat(all_results).sort_values(by=['stay_id', 'date'])['antibiotics'].values
 
 
-def generate_antibiotics_vector_old(df_antibiotics,
-                                    df_id,
-                                    df_mappings,
-                                    border1,
-                                    border2,
-                                    gap_minutes=24 * 60,
-                                    margin_minutes=30,
-                                    freq='1min'):
-    """"
-    The antibiotics vector needs to be a vector of 1s and 0s, 1 if the patient received antibiotics at that time, 0 otherwise,
-    the time used needs to match the one from the same stay, i.e. same range (start to finish) of time as the patient stay
-    The vector of antibiotics is filled with 1s in between two antibiotics administrations first and last time,
-    except if the time between two administrations is more than 24 hours, then it is considered two different administrations
+def generate_infections_vector(df_infections,
+                               df_id,
+                               margin_minutes=30,
+                               freq='1min'):
     """
-    # Create new df that matches the range, for each stay_id, create a full time range from first administration to last administration, per stay_id
-    full_range_dfs = []
-    for stay_id, stay_antibios_df in df_antibiotics.groupby('stay_id'):
-        # Find matching vital date start and end for corresponding stay_id
-        staymatch_df_id = df_id[df_id['stay_id'] == stay_id]
-        if staymatch_df_id.empty:
-            # Skip this stay_id as there's no matching stay info
+    Generates a binary vector indicating infection presence during ICU stays.
+
+    Parameters
+    ----------
+    df_infections : pd.DataFrame
+        Must contain:
+            - 'stay_id': Unique identifier for the stay.
+            - 'start': Infection start time in minutes since start of stay.
+            - 'end': Infection end time in minutes since start of stay (or NaN for ongoing).
+
+    df_id : pd.DataFrame
+        Must contain:
+            - 'stay_id': Unique identifier.
+            - 'date': Timestamps covering full stay.
+
+    margin_minutes : int, default=30
+        Number of minutes before infection start to activate infection flag.
+
+    freq : str, default='1min'
+        Temporal resolution.
+
+    Returns
+    -------
+    np.ndarray
+        Flattened, sorted binary infection vector across all stays.
+    """
+    all_results = []
+
+    # Group by stay
+    for stay_id, stay_df in df_id.groupby('stay_id'):
+        stay_start = stay_df['date'].min()
+        stay_end = stay_df['date'].max()
+        time_range = pd.date_range(start=stay_start, end=stay_end, freq=freq)
+        n = len(time_range)
+
+        infection_vector = np.zeros(n, dtype=np.uint8)
+        time_to_index = pd.Series(index=time_range, data=np.arange(n))
+
+        # Get infections for current stay
+        stay_infections = df_infections[df_infections['stay_id'] == stay_id].copy()
+        if stay_infections.empty:
+            result = pd.DataFrame({
+                'stay_id': stay_id,
+                'date': time_range,
+                'infection': infection_vector
+            })
+            all_results.append(result)
             continue
 
-        stay_start = staymatch_df_id['date'].min()
-        stay_end = staymatch_df_id['date'].max()
+        # Convert offsets to actual timestamps
+        for _, row in stay_infections.iterrows():
+            # TODO round to freq
+            offset_start = row['start'] - margin_minutes
+            offset_end = row['end'] if pd.notnull(row['end']) else (time_range[-1] - stay_start).total_seconds() / 60
 
-        # Generate a full time index from min to max timestamp
-        full_time_range = pd.date_range(
-            start=stay_start,
-            end=stay_end,
-            freq=freq
-        )
+            # Clamp start and end
+            offset_start = max(offset_start, 0)
+            offset_end = min(offset_end, (time_range[-1] - stay_start).total_seconds() / 60)
 
-        # Create a new dataframe with the full time range
-        administration_complete_df = pd.DataFrame({"date": full_time_range, "antibiotics": np.nan})
-        administration_complete_df['stay_id'] = stay_id
+            # Convert to timestamps
+            start_time = (stay_start + pd.Timedelta(minutes=offset_start)).floor(freq)
+            end_time = (stay_start + pd.Timedelta(minutes=offset_end)).floor(freq)
 
-        # In stay_antibios_df, modulo it out to our current freq to make sure it will always match a time in the full_time_range
-        stay_antibios_df['administration_time'] = stay_antibios_df['administration_time'].dt.floor(
-            freq)
+            try:
+                start_idx = time_to_index.get(start_time)
+                end_idx = time_to_index.get(end_time)
+                if pd.notnull(start_idx) and pd.notnull(end_idx):
+                    infection_vector[start_idx:end_idx + 1] = 1
+            except KeyError:
+                print(f"Infection window out of bounds for stay_id {stay_id}. Skipped.")
+                continue
 
-        # Find the start and end time of each administrations (and considering gaps), fill with 1s in the new dataframe based on this
-        prev_time = stay_antibios_df['administration_time'].iloc[0]
+        result = pd.DataFrame({
+            'stay_id': stay_id,
+            'date': time_range,
+            'infection': infection_vector
+        })
+        all_results.append(result)
 
-        if not pd.isnull(prev_time):
-            for index, row in stay_antibios_df.iterrows():
-                # Find first and last time of administration
-                curr_time = row['administration_time']
-                # Check if the gap is less than GAP_CONST
-                if (curr_time - prev_time).seconds / 60 < gap_minutes:
-                    # Then fill in the administration_complete_df with 1s between prev_time and curr_time
-                    # Always also fill it with the MARGIN_CONST minutes before an actual point too
-                    administration_complete_df.loc[
-                        (administration_complete_df['date'] >= prev_time - pd.Timedelta(minutes=margin_minutes)) & (
-                                administration_complete_df['date'] <= curr_time), 'antibiotics'] = 1
-                else:
-                    # Then fill in the administration_complete_df with 1s at curr_time, still with the margin
-                    administration_complete_df.loc[
-                        (administration_complete_df['date'] >= curr_time - pd.Timedelta(minutes=margin_minutes)) & (
-                                administration_complete_df['date'] <= curr_time), 'antibiotics'] = 1
+    if not all_results:
+        return np.array([], dtype=np.uint8)
 
-                # Update prev_time
-                prev_time = curr_time
+    final_df = pd.concat(all_results).sort_values(by=['stay_id', 'date'])
+    return final_df['infection'].values
 
-        # Fill the NaN values with 0
-        administration_complete_df = administration_complete_df.fillna(0)
-
-        # Append the new dataframe to the list
-        full_range_dfs.append(administration_complete_df)
-
-    if not full_range_dfs:
-        return pd.Series(dtype=np.uint8)  # or an empty DataFrame if needed
-
-    # Concatenate all the dataframes
-    df_antibiotics = pd.concat(full_range_dfs)
-
-    # Sort again because im scared
-    df_antibiotics = df_antibiotics.sort_values(by=['stay_id', 'date'])
-
-    # #DEBUG: Print df_antibiotics columns and head
-    # print("Antibiotics columns",df_antibiotics.columns)
-    # print("Antibiotics head",df_antibiotics.head())
-
-    # #DEBUG: Iterate over all patients and print the number of 1s in the antibiotics vector
-    # for stay_id, stay_antibios_df in df_antibiotics.groupby('stay_id'):
-    #     print(f"Stay_id: {stay_id}, Number of 1s in antibiotics vector: {stay_antibios_df['antibiotics'].sum()}")
-    #     #And total number of rows
-    #     print(f"Total number of rows: {len(stay_antibios_df)}")
-
-    return df_antibiotics['antibiotics'].values
-    #.values[border1:border2]
-    #DEBUG: I should not do this, since I already border my data_id on which i base my timeframe

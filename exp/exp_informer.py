@@ -1,4 +1,5 @@
 from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS
+from data.data_loader_eICU import Dataset_eICU
 from exp.exp_basic import Exp_Basic
 from exp.flexible_BCE_loss import FlexibleBCELoss
 from models.model import Informer, InformerStack
@@ -234,6 +235,7 @@ class Exp_Informer(Exp_Basic):
             'ECL':Dataset_Custom,
             'Solar':Dataset_Custom,
             'MEWS':Dataset_MEWS,
+            'eICU':Dataset_eICU,
             'custom':Dataset_Custom,
         }
         Data = data_dict[self.args.data]
