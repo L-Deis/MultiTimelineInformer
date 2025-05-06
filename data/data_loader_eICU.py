@@ -14,6 +14,7 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+
 class Dataset_eICU(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S',
@@ -108,6 +109,8 @@ class Dataset_eICU(Dataset):
     def _compress_data(self):
         # if datafreq is not 1min, skip every x row
         if self.data_compress == "skip" and pd.Timedelta(self.freq) != pd.Timedelta(minutes=1):
+            # TODO this is simple downsampling with no regard for missing data
+            #  every Nth element is taken, this can create gaps that are much worse than what exists in the basic data
             self.data_infections = self.data_infections[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
             self.data_x = self.data_x[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
             self.data_y = self.data_y[::int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))]
@@ -116,7 +119,7 @@ class Dataset_eICU(Dataset):
         if self.data_compress == "mean" and pd.Timedelta(self.freq) != pd.Timedelta(minutes=1):
             factor = int(pd.Timedelta(self.freq) / pd.Timedelta(minutes=1))
             # take the mean of the factor//2 points before and after the timestep
-            # TODO: Implement summing up the data
+            # TODO: Implement summing up the data by getting the mean from a timewindow
 
     def __read_data__(self):
         if self.use_preprocessed and self._load_preprocessed_data():
@@ -129,7 +132,7 @@ class Dataset_eICU(Dataset):
             self.root_path,
             self.data_path["vitals"]),
             usecols=['minutes_since_admission', 'HR', 'respiratory_rate', 'oxygen_saturation', 'SYS', 'DIA', 'BP_mean',
-                    'stay_id'], 
+                    'stay_id'],
                 # 'date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
                     #  'stay_id'],  # Don't load mdn to save memory
             # nrows=100000,  #DEBUG: Read only the first 1000 lines
@@ -199,7 +202,7 @@ class Dataset_eICU(Dataset):
         # Sort again because im scared
         df_raw = df_raw.sort_values(by=['stay_id', 'date'])
 
-        # --- MEWS Specific pre-processing end ---
+        # --- eICU Specific pre-processing end ---
 
         '''
         df_raw.columns: ['stay_id', 'date', ...(other features), target feature]
@@ -332,7 +335,7 @@ class Dataset_eICU(Dataset):
 
         # Sort by ascending stay_id and start_offset
         df_infections = df_infections.sort_values(by=['stay_id', 'start_offset'])
-        
+
         # Frist, if end_offset is negative, drop the row, keep also the nulls
         df_infections = df_infections[df_infections['end_offset'] >= 0 | df_infections['end_offset'].isna()]
         # End, if start_offset is negative, set it to 0
@@ -347,7 +350,7 @@ class Dataset_eICU(Dataset):
                                                            freq=self.freq)  # TODO: Check if freq is correct
 
         # del df_antibiotics to save memory
-        del df_antibiotics
+        del df_infections
         gc.collect()
 
         # --- DEBUG ---

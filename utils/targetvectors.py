@@ -5,10 +5,10 @@ import numpy as np
 def generate_antibiotics_vector(df_antibiotics,
                                 df_id,
                                 gap_minutes=24 * 60,
-                                margin_minutes=30,
+                                margin_minutes=240,
                                 freq='1min'):
     """
-    Efficiently generates a binary time series indicating whether a patient was under antibiotic
+    Generates a binary time series indicating whether a patient was under antibiotic
     treatment at each minute of their stay.
 
     Parameters
@@ -136,93 +136,58 @@ def generate_antibiotics_vector(df_antibiotics,
     return pd.concat(all_results).sort_values(by=['stay_id', 'date'])['antibiotics'].values
 
 
-def generate_infections_vector(df_infections,
-                               df_id,
-                               margin_minutes=30,
-                               freq='1min'):
+def generate_infections_vector(df_infections, df_id, margin_minutes=240):
     """
-    Generates a binary vector indicating infection presence during ICU stays.
+    Generates a binary time series indicating whether a patient had an infection at each minute of their stay.
 
     Parameters
     ----------
-    df_infections : pd.DataFrame
-        Must contain:
-            - 'stay_id': Unique identifier for the stay.
-            - 'start': Infection start time in minutes since start of stay.
-            - 'end': Infection end time in minutes since start of stay (or NaN for ongoing).
-
-    df_id : pd.DataFrame
-        Must contain:
-            - 'stay_id': Unique identifier.
-            - 'date': Timestamps covering full stay.
-
-    margin_minutes : int, default=30
-        Number of minutes before infection start to activate infection flag.
-
-    freq : str, default='1min'
-        Temporal resolution.
+    df_infections : DataFrame with 'stay_id', 'start', 'end'
+    df_id : DataFrame with 'stay_id', 'date' (can have duplicates)
+    margin_minutes : int, pre-infection activation window
 
     Returns
     -------
-    np.ndarray
-        Flattened, sorted binary infection vector across all stays.
+    np.ndarray : Flattened binary infection vector
     """
-    all_results = []
+    df_id = df_id.copy()
+    df_infections = df_infections.copy()
 
-    # Group by stay
-    for stay_id, stay_df in df_id.groupby('stay_id'):
-        stay_start = stay_df['date'].min()
-        stay_end = stay_df['date'].max()
-        time_range = pd.date_range(start=stay_start, end=stay_end, freq=freq)
-        n = len(time_range)
+    df_id['row_idx'] = np.arange(len(df_id))
 
-        infection_vector = np.zeros(n, dtype=np.uint8)
-        time_to_index = pd.Series(index=time_range, data=np.arange(n))
+    # Fill missing end values with infinity
+    df_infections['end'] = df_infections['end'].fillna(np.inf)
 
-        # Get infections for current stay
-        stay_infections = df_infections[df_infections['stay_id'] == stay_id].copy()
-        if stay_infections.empty:
-            result = pd.DataFrame({
-                'stay_id': stay_id,
-                'date': time_range,
-                'infection': infection_vector
-            })
-            all_results.append(result)
-            continue
+    # Map stay start and end times
+    stay_start = df_id.groupby('stay_id')['date'].min()
+    stay_end = df_id.groupby('stay_id')['date'].max()
 
-        # Convert offsets to actual timestamps
-        for _, row in stay_infections.iterrows():
-            # TODO round to freq
-            offset_start = row['start'] - margin_minutes
-            offset_end = row['end'] if pd.notnull(row['end']) else (time_range[-1] - stay_start).total_seconds() / 60
+    df_infections['stay_start'] = df_infections['stay_id'].map(stay_start)
+    df_infections['stay_end'] = df_infections['stay_id'].map(stay_end)
 
-            # Clamp start and end
-            offset_start = max(offset_start, 0)
-            offset_end = min(offset_end, (time_range[-1] - stay_start).total_seconds() / 60)
+    # Drop infections with no matching stay_id
+    df_infections = df_infections.dropna(subset=['stay_start'])
 
-            # Convert to timestamps
-            start_time = (stay_start + pd.Timedelta(minutes=offset_start)).floor(freq)
-            end_time = (stay_start + pd.Timedelta(minutes=offset_end)).floor(freq)
+    # Compute absolute start and end times
+    df_infections['abs_start'] = df_infections['stay_start'] - pd.to_timedelta(margin_minutes, unit='m')
+    df_infections['abs_start'] = df_infections[['abs_start', 'stay_start']].max(axis=1)
 
-            try:
-                start_idx = time_to_index.get(start_time)
-                end_idx = time_to_index.get(end_time)
-                if pd.notnull(start_idx) and pd.notnull(end_idx):
-                    infection_vector[start_idx:end_idx + 1] = 1
-            except KeyError:
-                print(f"Infection window out of bounds for stay_id {stay_id}. Skipped.")
-                continue
+    df_infections['abs_end'] = df_infections['stay_start'] + pd.to_timedelta(
+        df_infections['end'] - df_infections['start'], unit='m'  # stay duration
+    )
+    df_infections['abs_end'] = df_infections[['abs_end', 'stay_end']].min(axis=1)
 
-        result = pd.DataFrame({
-            'stay_id': stay_id,
-            'date': time_range,
-            'infection': infection_vector
-        })
-        all_results.append(result)
+    # Merge df_id with infection windows
+    df_merged = df_id.merge(df_infections[['stay_id', 'abs_start', 'abs_end']],
+                            on='stay_id', how='left')
 
-    if not all_results:
-        return np.array([], dtype=np.uint8)
+    # Flag whether each row is within any infection window
+    in_window = (
+        (df_merged['date'] >= df_merged['abs_start']) &
+        (df_merged['date'] <= df_merged['abs_end'])
+    )
 
-    final_df = pd.concat(all_results).sort_values(by=['stay_id', 'date'])
-    return final_df['infection'].values
+    # Aggregate to final infection vector (some rows will match multiple infections, take any)
+    infection_vector = in_window.groupby(df_merged['row_idx']).any().astype(np.uint8).values
 
+    return infection_vector
