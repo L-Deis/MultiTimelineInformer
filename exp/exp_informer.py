@@ -351,11 +351,12 @@ class Exp_Informer(Exp_Basic):
             total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
 
             if return_preds:
-                preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
+                pred_np = pred.detach().cpu().numpy()
+                preds_y.append(pred_np[:,:,:-1])
                 trues_y.append(true_y.detach().cpu().numpy())
-                preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
+                preds_antibio.append(pred_np[:,:,-1])
                 trues_antibio.append(true_antibio.detach().cpu().numpy())
-                ids_y.append(batch_y_id.detach().cpu().numpy())
+                ids_y.append(batch_y_id)
 
         total_loss = np.average(total_loss) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
@@ -637,11 +638,12 @@ class Exp_Informer(Exp_Basic):
 
             pred, true_y, true_antibio = self._process_one_batch(
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
-            preds_y.append(pred.detach().cpu().numpy()[:,:,:-1])
+            pred_np = pred.detach().cpu().numpy()
+            preds_y.append(pred_np[:,:,:-1])
             trues_y.append(true_y.detach().cpu().numpy())
-            preds_antibio.append(pred.detach().cpu().numpy()[:,:,-1])
+            preds_antibio.append(pred_np[:,:,-1])
             trues_antibio.append(true_antibio.detach().cpu().numpy())
-            ids_y.append(batch_y_id.detach().cpu().numpy())
+            ids_y.append(batch_y_id)
 
         # Safety check to ensure we have predictions before trying to process them
         if not preds_y:
