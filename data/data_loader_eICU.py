@@ -150,25 +150,34 @@ class Dataset_eICU(Dataset):
         # --- eICU/MEWS Specific pre-processing ---
         # Print all columns names
         print("Columns names", df_raw.columns)
-        # Ensure the datatype of each column is float, except date which is datetime
-        for col in df_raw.columns:
-            if col == 'date':
-                df_raw[col] = pd.to_datetime(df_raw[col])
-            elif col in ['stay_id']:
-                # Turn the NaN to 0
-                df_raw[col].fillna(0, inplace=True)
-                # Convert the column to int
-                df_raw[col] = df_raw[col].astype(np.uint32)
-            elif col in ['HR', 'respiratory_rate', 'oxygen_saturation', 'SYS', 'DIA', 'BP_mean']:
-                # Turn the NaN to 0
-                df_raw[col].fillna(0, inplace=True)
-                # Convert the column to int
-                df_raw[col] = df_raw[col].astype(np.uint16)
-            else:
-                # Turn the NaN to 0
-                df_raw[col].fillna(0, inplace=True)
-                # Convert the column to float
-                df_raw[col] = df_raw[col].astype(np.float32)
+        # Ensure the datatype of the known number columns is int
+        column_types = {
+            'stay_id': np.uint32,
+            'HR': np.uint16,
+            'respiratory_rate': np.uint16,
+            'oxygen_saturation': np.uint16,
+            'SYS': np.uint16,
+            'DIA': np.uint16,
+            'BP_mean': np.uint16,
+            # fallback: np.float32
+        }
+
+        for col, dtype in column_types.items():
+            print(col)
+            # Fill NaNs with 0
+            df_raw[col] = df_raw[col].fillna(0)
+
+            # Remove negative values (set them to 0)
+            df_raw[col] = df_raw[col].map(lambda x: x if x >= 0 else 0)
+
+            # Round values and cast to desired type
+            df_raw[col] = df_raw[col].round().astype(dtype)
+
+        # Fallback for all remaining numeric columns
+        for col in df_raw.select_dtypes(include='number').columns:
+            if col not in column_types:
+                df_raw[col] = df_raw[col].fillna(0).astype(np.float32)
+
         # Ensure the data is sorted per date_time per stay_id
         df_raw = df_raw.sort_values(by=['stay_id', 'date'])
 
@@ -274,7 +283,7 @@ class Dataset_eICU(Dataset):
 
         # create new column is_man based on PatientGeslacht (M=1, V=0)
         def is_man(gender):
-            if gender == 'M':
+            if gender == 'M' or gender == 'Male':
                 return 1
             else:
                 return 0
@@ -321,7 +330,7 @@ class Dataset_eICU(Dataset):
         # --- STATIC END ---
 
         # --- ANTIBIOTICS ---
-        print("DATALOADER: Start Loading Antibiotics...")
+        print("DATALOADER: Start Loading Infections...")
         df_infections = pd.read_csv(os.path.join(self.root_path,
                                                   self.data_path["infections"]))
         # Filter out infections that are not in the stay_ids_to_keep
