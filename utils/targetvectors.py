@@ -136,7 +136,10 @@ def generate_antibiotics_vector(df_antibiotics,
     return pd.concat(all_results).sort_values(by=['stay_id', 'date'])['antibiotics'].values
 
 
-def generate_infections_vector(df_infections, df_id, margin_minutes=240):
+def generate_infections_vector(df_infections, 
+                                df_id, 
+                                margin_minutes=240,
+                                freq='1min'):
     """
     Generates a binary time series indicating whether a patient had an infection at each minute of their stay.
 
@@ -150,44 +153,84 @@ def generate_infections_vector(df_infections, df_id, margin_minutes=240):
     -------
     np.ndarray : Flattened binary infection vector
     """
-    df_id = df_id.copy()
-    df_infections = df_infections.copy()
+    # df_id = df_id.copy()
+    # df_id['row_idx'] = np.arange(len(df_id))
 
-    df_id['row_idx'] = np.arange(len(df_id))
+    all_results = []
 
-    # Fill missing end values with infinity
-    df_infections['end'] = df_infections['end'].fillna(np.inf)
+    for stay_id, stay_ids_df in df_id.groupby('stay_id'):
+        stay_infections_df = df_infections[df_infections['stay_id'] == stay_id]
 
-    # Map stay start and end times
-    stay_start = df_id.groupby('stay_id')['date'].min()
-    stay_end = df_id.groupby('stay_id')['date'].max()
+        stay_start = stay_ids_df['date'].min()
+        stay_end = stay_ids_df['date'].max()
 
-    df_infections['stay_start'] = df_infections['stay_id'].map(stay_start)
-    df_infections['stay_end'] = df_infections['stay_id'].map(stay_end)
+        full_time_range = pd.date_range(start=stay_start, end=stay_end, freq=freq)
+        n = len(full_time_range)
 
-    # Drop infections with no matching stay_id
-    df_infections = df_infections.dropna(subset=['stay_start'])
+        # Preallocate numpy array for infection flags
+        infection_vector = np.zeros(n, dtype=np.uint8)
 
-    # Compute absolute start and end times
-    df_infections['abs_start'] = df_infections['stay_start'] - pd.to_timedelta(margin_minutes, unit='m')
-    df_infections['abs_start'] = df_infections[['abs_start', 'stay_start']].max(axis=1)
+        # early exit for empty vectors
+        if len(stay_infections_df) == 0:
+            result = pd.DataFrame({
+                'stay_id': stay_id,
+                'date': full_time_range,
+                'infections': infection_vector
+            })
+            all_results.append(result)
+            continue
 
-    df_infections['abs_end'] = df_infections['stay_start'] + pd.to_timedelta(
-        df_infections['end'] - df_infections['start'], unit='m'  # stay duration
-    )
-    df_infections['abs_end'] = df_infections[['abs_end', 'stay_end']].min(axis=1)
+        # Build index mapping for fast lookup
+        time_to_index = pd.Series(index=full_time_range, data=np.arange(n))
 
-    # Merge df_id with infection windows
-    df_merged = df_id.merge(df_infections[['stay_id', 'abs_start', 'abs_end']],
-                            on='stay_id', how='left')
+        # Prepare and clean up infection times
+        stay_infections_df = stay_infections_df.copy()
 
-    # Flag whether each row is within any infection window
-    in_window = (
-        (df_merged['date'] >= df_merged['abs_start']) &
-        (df_merged['date'] <= df_merged['abs_end'])
-    )
+        # Fill missing end values with infinity
+        stay_infections_df['end'] = stay_infections_df['end'].fillna(np.inf)
 
-    # Aggregate to final infection vector (some rows will match multiple infections, take any)
-    infection_vector = in_window.groupby(df_merged['row_idx']).any().astype(np.uint8).values
+        # Drop the rows with NA in start
+        stay_infections_df = stay_infections_df.dropna()
 
-    return infection_vector
+        stay_infections_df['start'] = pd.to_datetime(stay_infections_df['start'])
+        stay_infections_df['end'] = pd.to_datetime(stay_infections_df['end'])
+        stay_infections_df = stay_infections_df.sort_values(by='start')
+        stay_infections_df['start'] = stay_infections_df['start'].dt.floor(freq)
+        stay_infections_df['end'] = stay_infections_df['end'].dt.floor(freq)
+
+        # For each row/infection, input the infection window
+        for _, row in stay_infections_df.iterrows():
+            start_time = row['start'] - pd.Timedelta(minutes=margin_minutes)
+            end_time = row['end']
+
+            # Clip to stay window
+            if (start_time < stay_start):
+                start_time = stay_start.floor(freq)
+            if (start_time > stay_end):
+                continue
+            if (end_time > stay_end):
+                end_time = stay_end.floor(freq)
+            if (end_time < stay_start):
+                continue
+
+            # Get index range using closest matches
+            try:
+                start_idx = time_to_index.get(start_time)
+                end_idx = time_to_index.get(end_time)
+                infection_vector[start_idx:end_idx + 1] = 1
+            except KeyError:
+                print("There was an infection outside of a known stay. It has been skipped.")
+                continue
+
+        result = pd.DataFrame({
+            'stay_id': stay_id,
+            'date': full_time_range,
+            'infections': infection_vector
+        })
+        all_results.append(result)
+
+    if not all_results:
+        # return empty df in case of empty inputs
+        return pd.DataFrame(columns=['stay_id', 'date', 'infections'])
+
+    return pd.concat(all_results).sort_values(by=['stay_id', 'date'])['infections'].values

@@ -19,7 +19,7 @@ class Dataset_eICU(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S',
                  data_path={
-                     "vitals": "vitals.pkl",
+                     "vitals": "vitals.csv",
                      "patients": "patient.csv",
                      "infections": "infection.csv",
                  },
@@ -221,9 +221,9 @@ class Dataset_eICU(Dataset):
             cols = self.cols.copy()
             cols.remove(self.target)
         else:
-            cols = list(df_raw.columns);
-            cols.remove(self.target);
-            cols.remove('stay_id');
+            cols = list(df_raw.columns)
+            cols.remove(self.target)
+            cols.remove('stay_id')
             cols.remove('date')
         df_raw = df_raw[['stay_id', 'date'] + cols + [self.target]]
 
@@ -237,8 +237,8 @@ class Dataset_eICU(Dataset):
 
         if self.features == 'M' or self.features == 'MS':
             # df_raw columns without stay_id and date_time
-            cols_data = list(df_raw.columns);
-            cols_data.remove('stay_id');
+            cols_data = list(df_raw.columns)
+            cols_data.remove('stay_id')
             cols_data.remove('date')
             df_data = df_raw[cols_data]
             df_id = df_raw[['stay_id', 'date']]
