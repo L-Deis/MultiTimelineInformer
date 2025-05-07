@@ -135,7 +135,7 @@ class Dataset_eICU(Dataset):
                     'stay_id'],
                 # 'date_time', 'HR', 'Ademhaling_frequentie', 'Saturatie', 'SYS', 'DIA', 'Bloeddruk_gemiddeld',
                     #  'stay_id'],  # Don't load mdn to save memory
-            # nrows=100000,  #DEBUG: Read only the first 1000 lines
+            # nrows=10000,  #DEBUG: Read only the first 1000 lines
         )
 
         # Remove every row where minutes_since_admission is negative
@@ -145,6 +145,8 @@ class Dataset_eICU(Dataset):
 
         # Create date column from minutes_since_admission
         df_raw['date'] = pd.to_datetime(df_raw['minutes_since_admission'], unit='m', errors='coerce')
+        # floor date to the nearest freq
+        df_raw['date'] = df_raw['date'].dt.floor(self.freq)
         df_raw.drop(columns=['minutes_since_admission'], inplace=True)
 
         # --- eICU/MEWS Specific pre-processing ---
@@ -351,8 +353,11 @@ class Dataset_eICU(Dataset):
         df_infections['start_offset'] = df_infections['start_offset'].apply(lambda x: 0 if x < 0 else x)
 
         # Convert start_offset and end_offset to date_start and date_end
-        df_infections['date_start'] = pd.to_datetime(df_raw['start_offset'], unit='m', errors='coerce')
-        df_infections['date_end'] = pd.to_datetime(df_raw['end_offset'], unit='m', errors='coerce')
+        df_infections['date_start'] = pd.to_datetime(df_infections['start_offset'], unit='m', errors='coerce')
+        df_infections['date_end'] = pd.to_datetime(df_infections['end_offset'], unit='m', errors='coerce')
+        # floor date_start and date_end to the nearest freq
+        df_infections['date_start'] = df_infections['date_start'].dt.floor(self.freq)
+        df_infections['date_end'] = df_infections['date_end'].dt.floor(self.freq)
         df_infections.drop(columns=['start_offset', 'end_offset'], inplace=True)
 
         self.data_infections = generate_infections_vector(df_infections, df_id,

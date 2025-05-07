@@ -167,6 +167,9 @@ def generate_infections_vector(df_infections,
         full_time_range = pd.date_range(start=stay_start, end=stay_end, freq=freq)
         n = len(full_time_range)
 
+        # Get stay start offset (modulo) from the freq
+        # stay_start_offset = (stay_start) % pd.Timedelta(freq)
+
         # Preallocate numpy array for infection flags
         infection_vector = np.zeros(n, dtype=np.uint8)
 
@@ -187,21 +190,24 @@ def generate_infections_vector(df_infections,
         stay_infections_df = stay_infections_df.copy()
 
         # Fill missing end values with infinity
-        stay_infections_df['end'] = stay_infections_df['end'].fillna(np.inf)
+        stay_infections_df['date_end'] = stay_infections_df['date_end'].fillna(pd.Timestamp.max)
 
         # Drop the rows with NA in start
         stay_infections_df = stay_infections_df.dropna()
 
-        stay_infections_df['start'] = pd.to_datetime(stay_infections_df['start'])
-        stay_infections_df['end'] = pd.to_datetime(stay_infections_df['end'])
-        stay_infections_df = stay_infections_df.sort_values(by='start')
-        stay_infections_df['start'] = stay_infections_df['start'].dt.floor(freq)
-        stay_infections_df['end'] = stay_infections_df['end'].dt.floor(freq)
+        stay_infections_df['date_start'] = pd.to_datetime(stay_infections_df['date_start'])
+        stay_infections_df['date_end'] = pd.to_datetime(stay_infections_df['date_end']) 
+        stay_infections_df = stay_infections_df.sort_values(by='date_start')
+        stay_infections_df['date_start'] = stay_infections_df['date_start'].dt.floor(freq)
+        stay_infections_df['date_end'] = stay_infections_df['date_end'].dt.floor(freq)
 
         # For each row/infection, input the infection window
         for _, row in stay_infections_df.iterrows():
-            start_time = row['start'] - pd.Timedelta(minutes=margin_minutes)
-            end_time = row['end']
+            start_time = row['date_start'] - pd.Timedelta(minutes=margin_minutes)
+            end_time = row['date_end']
+
+            start_time = start_time.floor(freq)
+            end_time = end_time.floor(freq)
 
             # Clip to stay window
             if (start_time < stay_start):
