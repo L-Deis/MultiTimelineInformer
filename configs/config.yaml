@@ -1,4 +1,4 @@
-model: informer  # model of experiment, options: [informer, informerstack, informerlight(TBD)]
+model: informerMLP  # model of experiment, options: [informer, informerstack, informerlight(TBD), informerMLP]
 
 data: eICU  # data
 # root_path_data: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path for data loading
@@ -54,6 +54,9 @@ distil: true  # whether to use distilling in the encoder
 output_attention: false  # whether to output attention in the encoder
 mix: true
 padding: 0
+
+#MLP Specific
+mlp_hidden_mul: 4 #hidden size of the MLP
 
 #Conditionning
 condition: true #Whether to condition the model on the static variables

@@ -2,7 +2,7 @@ from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custo
 from data.data_loader_eICU import Dataset_eICU
 from exp.exp_basic import Exp_Basic
 from exp.flexible_BCE_loss import FlexibleBCELoss
-from models.model import Informer, InformerStack
+from models.model import Informer, InformerStack, InformerMLP
 from exp.multi_timeline_2 import categorical_collate
 
 from utils.tools import EarlyStopping, adjust_learning_rate
@@ -182,6 +182,7 @@ class Exp_Informer(Exp_Basic):
         model_dict = {
             'informer':Informer,
             'informerstack':InformerStack,
+            'informerMLP':InformerMLP,
         }
         if self.args.model=='informer' or self.args.model=='informerstack':
             e_layers = self.args.e_layers if self.args.model=='informer' else self.args.s_layers
@@ -214,6 +215,32 @@ class Exp_Informer(Exp_Basic):
                 self.args.n_cond_cat_in,
                 self.args.n_cond_cat_out,
                 # ---
+                self.device
+            ).float()
+        elif self.args.model=='informerMLP':
+            e_layers = self.args.e_layers
+            model = model_dict[self.args.model](
+                self.args.enc_in,
+                self.args.dec_in,
+                self.args.c_out,
+                self.args.seq_len,
+                self.args.label_len,
+                self.args.pred_len,
+                self.args.d_model,
+                self.args.e_layers,
+                self.args.d_layers,
+                self.args.d_ff,
+                self.args.dropout,
+                self.args.embed,
+                self.args.freq,
+                self.args.activation,
+                self.args.distil,
+                self.args.condition,
+                self.args.n_cond_num_in,
+                self.args.n_cond_num_out,
+                self.args.n_cond_cat_in,
+                self.args.n_cond_cat_out,
+                self.args.mlp_hidden_mul,
                 self.device
             ).float()
 

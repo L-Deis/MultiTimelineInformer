@@ -8,6 +8,7 @@ from models.decoder import Decoder, DecoderLayer
 from models.attn import FullAttention, ProbAttention, AttentionLayer
 from models.embed import DataEmbedding, ConditionEmbedding
 from models.norm import ConditionalLayerNorm
+from models.mlp import MLPBlock
 
 class Informer(nn.Module):
     def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len, 
@@ -168,6 +169,113 @@ class InformerStack(nn.Module):
 
         dec_out = self.dec_embedding(x_dec, x_mark_dec)
         dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
+        dec_out = self.projection(dec_out)
+        
+        # dec_out = self.end_conv1(dec_out)
+        # dec_out = self.end_conv2(dec_out.transpose(2,1)).transpose(1,2)
+        if self.output_attention:
+            return dec_out[:,-self.pred_len:,:], attns
+        else:
+            return dec_out[:,-self.pred_len:,:] # [B, L, D]
+
+class InformerMLP(nn.Module):
+    # def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len, 
+    #             factor=5, d_model=512, n_heads=8, e_layers=3, d_layers=2, d_ff=512, 
+    #             dropout=0.0, attn='prob', embed='fixed', freq='h', activation='gelu', 
+    #             output_attention = False, distil=True, mix=True, condition=False, n_cond_num_in=0, n_cond_num_out=0, n_cond_cat_in="", n_cond_cat_out="",
+    #             device=torch.device('cuda:0')):
+    def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len,
+            d_model=512, e_layers=3, d_layers=2, d_ff=512,
+            dropout=0.0, embed='fixed', freq='h', activation='gelu',
+            distil=False, condition=False, n_cond_num_in=0, n_cond_num_out=0, n_cond_cat_in="", n_cond_cat_out="",
+            mlp_hidden_mul=4,
+            device=torch.device('cuda:0')):
+        super(Informer, self).__init__()
+        self.pred_len = out_len
+
+        # Conditioning
+        if condition:
+            self.cond_embedding = ConditionEmbedding(n_cond_num_in, n_cond_num_out, n_cond_cat_in, n_cond_cat_out)
+            self.cond_emb_in = self.cond_embedding.n_in
+            self.cond_emb_out = self.cond_embedding.n_out
+        else:
+            self.cond_emb_in = 0
+            self.cond_emb_out = 0
+        
+        #MLP
+        self.hidden_mul = mlp_hidden_mul
+
+        # Encoding
+        self.enc_embedding = DataEmbedding(enc_in, d_model, embed, freq, dropout)
+        self.dec_embedding = DataEmbedding(dec_in, d_model, embed, freq, dropout)
+
+        # Encoder
+        self.encoder = Encoder(
+            [
+                EncoderLayer(
+                    MLPBlock(
+                        d_model=d_model,      # same hidden size as before
+                        hidden_mul=self.hidden_mul,         # 4× expansion like the Transformer FFN (tweak if you like)
+                        dropout=dropout,      # reuse the model-level dropout hyper-parameter
+                        mix=False,            # keep the flag so call-sites don’t change
+                    ),
+                    d_model,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation,
+                    d_emb=self.cond_emb_out
+                ) for l in range(e_layers)
+            ],
+            [
+                ConvLayer(
+                    d_model
+                ) for l in range(e_layers-1)
+            ] if distil else None,
+            norm_layer=torch.nn.LayerNorm(d_model) if not condition else ConditionalLayerNorm(d_model, self.cond_emb_out)
+        )
+        # Decoder
+        self.decoder = Decoder(
+            [
+                DecoderLayer(
+                    MLPBlock(
+                        d_model=d_model,      # same hidden size as before
+                        hidden_mul=self.hidden_mul,         # 4× expansion like the Transformer FFN (tweak if you like)
+                        dropout=dropout,      # reuse the model-level dropout hyper-parameter
+                        mix=False,            # keep the flag so call-sites don’t change
+                    ),
+                    MLPBlock(
+                        d_model=d_model,      # same hidden size as before
+                        hidden_mul=self.hidden_mul,         # 4× expansion like the Transformer FFN (tweak if you like)
+                        dropout=dropout,      # reuse the model-level dropout hyper-parameter
+                        mix=False,            # keep the flag so call-sites don’t change
+                    ),
+                    d_model,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation,
+                    d_emb=self.cond_emb_out
+                )
+                for l in range(d_layers)
+            ],
+            norm_layer=torch.nn.LayerNorm(d_model) if not condition else ConditionalLayerNorm(d_model, self.cond_emb_out)
+        )
+        # self.end_conv1 = nn.Conv1d(in_channels=label_len+out_len, out_channels=out_len, kernel_size=1, bias=True)
+        # self.end_conv2 = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=True)
+        self.projection = nn.Linear(d_model, c_out, bias=True)
+        
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None, cond=None):
+        
+        if cond is not None:
+            cond_emb = self.cond_embedding(cond)
+        else:
+            cond_emb = None
+
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)
+        enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask, cond=cond_emb)
+
+        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask, cond=cond_emb)
         dec_out = self.projection(dec_out)
         
         # dec_out = self.end_conv1(dec_out)
