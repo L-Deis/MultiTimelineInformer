@@ -190,7 +190,7 @@ class InformerMLP(nn.Module):
             distil=False, condition=False, n_cond_num_in=0, n_cond_num_out=0, n_cond_cat_in="", n_cond_cat_out="",
             mlp_hidden_mul=4,
             device=torch.device('cuda:0')):
-        super(Informer, self).__init__()
+        super(InformerMLP, self).__init__()
         self.pred_len = out_len
 
         # Conditioning
@@ -280,7 +280,4 @@ class InformerMLP(nn.Module):
         
         # dec_out = self.end_conv1(dec_out)
         # dec_out = self.end_conv2(dec_out.transpose(2,1)).transpose(1,2)
-        if self.output_attention:
-            return dec_out[:,-self.pred_len:,:], attns
-        else:
-            return dec_out[:,-self.pred_len:,:] # [B, L, D]
+        return dec_out[:,-self.pred_len:,:] # [B, L, D]
