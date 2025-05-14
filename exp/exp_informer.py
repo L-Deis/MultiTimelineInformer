@@ -23,6 +23,7 @@ from pathlib import Path
 import sys
 
 from functools import partial
+from tqdm import tqdm
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -478,129 +479,140 @@ class Exp_Informer(Exp_Basic):
         for epoch in range(start_epoch, self.args.train_epochs):
             iter_count = 0
             train_loss = []
+            epoch_start = time.time()
+            # outer bar: one “epoch” step per line
+            with tqdm(total=len(train_loader),
+                desc=f"Epoch {epoch+1}/{self.args.train_epochs}",
+                unit="batch") as pbar:
+                self.model.train()
+                # epoch_time = time.time()
+                for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
+                    iter_count += 1
 
-            self.model.train()
-            epoch_time = time.time()
-            for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
-                iter_count += 1
+                    # Skip empty batches
+                    if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
+                        # print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in training (iteration {i+1})")
+                        # continue
+                        pbar.write(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch ({i+1})")
+                        pbar.update(1)
+                        continue
 
-                # Skip empty batches
-                if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
-                    print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in training (iteration {i+1})")
-                    continue
+                    model_optim.zero_grad()
+                    pred, true_y, true_antibio = self._process_one_batch(
+                        train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+                    loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
+                    train_loss.append(loss.item())
+                    
+                    # backward & optimise
+                    if self.args.use_amp:
+                        scaler.scale(loss).backward()
+                        scaler.step(model_optim)
+                        scaler.update()
+                    else:
+                        loss.backward()
+                        model_optim.step()
 
-                model_optim.zero_grad()
-                pred, true_y, true_antibio = self._process_one_batch(
-                    train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
-                loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
-                train_loss.append(loss.item())
+                    # update tqdm bar and its postfix stats every 100 batches (or every batch—up to you)
+                    if (i + 1) % 100 == 0:
+                        pbar.set_postfix({
+                            "loss": f"{loss.item():.5f}",
+                            "mse": f"{loss_dict['loss_mse']:.5f}",
+                            "ce": f"{loss_dict['loss_ce']:.5f}"
+                        })
 
-                if (i+1) % 100==0:
-                    print_flush("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
-                    print_flush("\tloss_mse: {0:.7f} | loss_ce {1:.7f}".format(loss_dict['loss_mse'], loss_dict['loss_ce']))
-                    speed = (time.time()-time_now)/iter_count
-                    left_time = speed*((self.args.train_epochs - epoch)*train_steps - i)
-                    print_flush('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
-                    iter_count = 0
-                    time_now = time.time()
+                    pbar.update(1)   # move bar ahead one batch
 
-                if self.args.use_amp:
-                    scaler.scale(loss).backward()
-                    scaler.step(model_optim)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    model_optim.step()
+                # end-of-epoch logging
+                epoch_time = time.time() - epoch_start
+                # print_flush("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                train_loss = np.average(train_loss) if train_loss else 0.0
+                vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader, return_preds=False)
+                test_loss, test_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio, ids_y = self.vali(test_data, test_loader, return_preds=True)
 
-            print_flush("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
-            train_loss = np.average(train_loss) if train_loss else 0.0
-            vali_loss, vali_loss_dict = self.vali(vali_data, vali_loader, return_preds=False)
-            test_loss, test_loss_dict, preds_y, trues_y, preds_antibio, trues_antibio, ids_y = self.vali(test_data, test_loader, return_preds=True)
+                print_flush("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
+                    epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+                print_flush("Vali Loss: loss_mse: {0:.7f} | loss_ce: {1:.7f}".format(vali_loss_dict['loss_mse'], vali_loss_dict['loss_ce']))
 
-            print_flush("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
-            print_flush("Vali Loss: loss_mse: {0:.7f} | loss_ce: {1:.7f}".format(vali_loss_dict['loss_mse'], vali_loss_dict['loss_ce']))
+                # Create epoch-specific directory
+                epoch_dir = os.path.join(checkpoint_dir, f'epoch_{epoch+1}_test_results')
+                os.makedirs(epoch_dir, exist_ok=True)
 
-            # Create epoch-specific directory
-            epoch_dir = os.path.join(checkpoint_dir, f'epoch_{epoch+1}_test_results')
-            os.makedirs(epoch_dir, exist_ok=True)
-
-            # Save checkpoint for this epoch in the epoch-specific directory
-            self._save_checkpoint(
-                epoch + 1,
-                self.model,
-                model_optim,
-                vali_loss,
-                is_best=False,
-                save_dir=epoch_dir,
-                filename=f'model_epoch_{epoch+1}.pth'
-            )
-
-            # Handle early stopping and best model
-            is_best = vali_loss < best_vali_loss
-            if is_best:
-                best_vali_loss = vali_loss
-
-                # Save best in main checkpoint directory for easy access
+                # Save checkpoint for this epoch in the epoch-specific directory
                 self._save_checkpoint(
                     epoch + 1,
                     self.model,
                     model_optim,
                     vali_loss,
-                    is_best=True,
-                    save_dir=checkpoint_dir,
-                    filename="best_model.pth"
+                    is_best=False,
+                    save_dir=epoch_dir,
+                    filename=f'model_epoch_{epoch+1}.pth'
                 )
 
-            early_stopping(vali_loss, self.model, checkpoint_dir)
-            if early_stopping.early_stop:
-                print_flush("Early stopping")
-                break
+                # Handle early stopping and best model
+                is_best = vali_loss < best_vali_loss
+                if is_best:
+                    best_vali_loss = vali_loss
 
-            # Save test predictions and true values for this epoch
-            if preds_y:  # Only save if we have predictions
-                try:
-                    #each results are a list in shape (iterations, varying batch_size, pred_len, c_out)
-                    #pred_len and c_out are consistent but batch_size and iterations are not, making it impossible to convert to np array directly
-                    #we want to turn them into a (n, pred_len, c_out) data shape
-                    #so we need to reshape them but preds_y is a list not a numpy item
+                    # Save best in main checkpoint directory for easy access
+                    self._save_checkpoint(
+                        epoch + 1,
+                        self.model,
+                        model_optim,
+                        vali_loss,
+                        is_best=True,
+                        save_dir=checkpoint_dir,
+                        filename="best_model.pth"
+                    )
 
-                    preds_y = np.concatenate(preds_y, axis=0)
-                    trues_y = np.concatenate(trues_y, axis=0)
-                    preds_antibio = np.concatenate(preds_antibio, axis=0)
-                    trues_antibio = np.concatenate(trues_antibio, axis=0)
-                    ids_y = np.concatenate(ids_y, axis=0)
+                early_stopping(vali_loss, self.model, checkpoint_dir)
+                if early_stopping.early_stop:
+                    print_flush("Early stopping")
+                    break
 
-                    # Save the predictions and true values
-                    np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
-                    np.save(os.path.join(epoch_dir, 'trues_y.npy'), trues_y)
-                    np.save(os.path.join(epoch_dir, 'preds_antibio.npy'), preds_antibio)
-                    np.save(os.path.join(epoch_dir, 'trues_antibio.npy'), trues_antibio)
-                    np.save(os.path.join(epoch_dir, 'id_y.npy'), ids_y)
+                # Save test predictions and true values for this epoch
+                if preds_y:  # Only save if we have predictions
+                    try:
+                        #each results are a list in shape (iterations, varying batch_size, pred_len, c_out)
+                        #pred_len and c_out are consistent but batch_size and iterations are not, making it impossible to convert to np array directly
+                        #we want to turn them into a (n, pred_len, c_out) data shape
+                        #so we need to reshape them but preds_y is a list not a numpy item
 
-                    # Save metrics for this epoch
-                    mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
-                    crossentropy = CEL(preds_antibio, trues_antibio)
+                        preds_y = np.concatenate(preds_y, axis=0)
+                        trues_y = np.concatenate(trues_y, axis=0)
+                        preds_antibio = np.concatenate(preds_antibio, axis=0)
+                        trues_antibio = np.concatenate(trues_antibio, axis=0)
+                        ids_y = np.concatenate(ids_y, axis=0)
 
-                    metrics_data = {
-                        'mae': float(mae),
-                        'mse': float(mse),
-                        'rmse': float(rmse),
-                        'mape': float(mape),
-                        'mspe': float(mspe),
-                        'crossentropy': float(crossentropy),
-                        'epoch': epoch + 1,
-                        'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
-                    }
+                        # Save the predictions and true values
+                        np.save(os.path.join(epoch_dir, 'preds_y.npy'), preds_y)
+                        np.save(os.path.join(epoch_dir, 'trues_y.npy'), trues_y)
+                        np.save(os.path.join(epoch_dir, 'preds_antibio.npy'), preds_antibio)
+                        np.save(os.path.join(epoch_dir, 'trues_antibio.npy'), trues_antibio)
+                        np.save(os.path.join(epoch_dir, 'id_y.npy'), ids_y)
 
-                    with open(os.path.join(epoch_dir, 'metrics.json'), 'w') as f:
-                        json.dump(metrics_data, f, indent=4)
+                        # Save metrics for this epoch
+                        mae, mse, rmse, mape, mspe = metric(preds_y, trues_y)
+                        crossentropy = CEL(preds_antibio, trues_antibio)
 
-                    print_flush(f"Saved test results and model checkpoint for epoch {epoch+1} to {epoch_dir}")
-                except Exception as e:
-                    print_flush(f"Error saving test results for epoch {epoch+1}: {str(e)}")
+                        metrics_data = {
+                            'mae': float(mae),
+                            'mse': float(mse),
+                            'rmse': float(rmse),
+                            'mape': float(mape),
+                            'mspe': float(mspe),
+                            'crossentropy': float(crossentropy),
+                            'epoch': epoch + 1,
+                            'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+                        }
 
-            adjust_learning_rate(model_optim, epoch+1, self.args)
+                        with open(os.path.join(epoch_dir, 'metrics.json'), 'w') as f:
+                            json.dump(metrics_data, f, indent=4)
+
+                        print_flush(f"Saved test results and model checkpoint for epoch {epoch+1} to {epoch_dir}")
+                    except Exception as e:
+                        print_flush(f"Error saving test results for epoch {epoch+1}: {str(e)}")
+
+                adjust_learning_rate(model_optim, epoch+1, self.args)
 
         # Load the best model before returning
         best_model_path = os.path.join(checkpoint_dir, 'best_model.pth')
