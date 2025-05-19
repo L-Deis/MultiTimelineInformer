@@ -384,7 +384,9 @@ class Exp_Informer(Exp_Basic):
                 trues_y.append(true_y.detach().cpu().numpy())
                 preds_antibio.append(pred_np[:,:,-1])
                 trues_antibio.append(true_antibio.detach().cpu().numpy())
-                ids_y.append(batch_y_id)
+                #keep only the first time point for each patient
+                # ids_y.append(batch_y_id)
+                ids_y.append(batch_y_id[:,0])
 
         total_loss = np.average(total_loss) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
@@ -682,7 +684,9 @@ class Exp_Informer(Exp_Basic):
             trues_y.append(true_y.detach().cpu().numpy())
             preds_antibio.append(pred_np[:,:,-1])
             trues_antibio.append(true_antibio.detach().cpu().numpy())
-            ids_y.append(batch_y_id)
+            #keep only the first time point for each patient
+            # ids_y.append(batch_y_id)
+            ids_y.append(batch_y_id[:,0])
 
         # Safety check to ensure we have predictions before trying to process them
         if not preds_y:
@@ -694,6 +698,7 @@ class Exp_Informer(Exp_Basic):
         preds_antibio = np.concatenate(preds_antibio, axis=0)
         trues_antibio = np.concatenate(trues_antibio, axis=0)
         ids_y = np.concatenate(ids_y, axis=0)
+        #TODO: instead of saving all the time points for ids_y, instead save the first time point for each patient and say the index of said time point
 
         # result save
         folder_path = os.path.join(self.args.root_path_save, self.args.logging_path, 'results_' + self.exp_time, setting)
