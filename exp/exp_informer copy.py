@@ -1,5 +1,5 @@
 from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_MEWS
-from data.data_loader_eICU import Dataset_eICU, Dataset_eICU_special
+from data.data_loader_eICU import Dataset_eICU
 from exp.exp_basic import Exp_Basic
 from exp.flexible_BCE_loss import FlexibleBCELoss
 from models.model import Informer, InformerStack, InformerMLP
@@ -264,7 +264,6 @@ class Exp_Informer(Exp_Basic):
             'Solar':Dataset_Custom,
             'MEWS':Dataset_MEWS,
             'eICU':Dataset_eICU,
-            'eICU_special':Dataset_eICU_special,
             'custom':Dataset_Custom,
         }
         Data = data_dict[self.args.data]
@@ -307,15 +306,14 @@ class Exp_Informer(Exp_Basic):
         print_flush(f"    - Num workers: {args.num_workers}")
         print_flush(f"    - Drop last: {drop_last}")
 
-        # categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)
+        categorical_collate_fn = partial(categorical_collate, timeenc=data_set.timeenc, freq=data_set.freq)
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
             shuffle=shuffle_flag,
             num_workers=args.num_workers,
             drop_last=drop_last,
-            # collate_fn = categorical_collate_fn,
-            )
+            collate_fn = categorical_collate_fn)
 
         return data_set, data_loader
 
@@ -334,52 +332,27 @@ class Exp_Informer(Exp_Basic):
 
     def select_criterion(self, criterion_name, weight=1):
         if criterion_name == 'mse':
-            criterion = nn.MSELoss(reduction="none")   
+            criterion = nn.MSELoss()
         elif criterion_name == 'l1':
             criterion = nn.L1Loss()
         elif criterion_name == 'crossentropy':
             criterion = FlexibleBCELoss(pos_weight=weight, device=self.device)
         else:
-            criterion = nn.MSELoss(reduction="none")
+            criterion = nn.MSELoss()
         return criterion
 
-    # def compute_loss(self, continuous_preds, continuous_targets, category_logits, category_targets, alpha=1.0):
-    #     # Regression loss (MSE)
-    #     loss_mse = self.criterion(continuous_preds, continuous_targets)
-
-    #     # Classification loss (Cross Entropy)
-    #     loss_ce = self.criterion_category(category_logits, category_targets)
-
-    #     # Total loss (weighted sum)
-    #     loss = loss_ce + alpha * loss_mse
-
-    #     # return loss
-    #     return loss, {'loss_ce': loss_ce.item(), 'loss_mse': loss_mse.item()}
-    
-    def compute_loss(self, preds, targets, alpha=1.0, mask=None):
+    def compute_loss(self, continuous_preds, continuous_targets, category_logits, category_targets, alpha=1.0):
         # Regression loss (MSE)
-        # mse_mask = (~vitals.isnan()).float()
-        # mse_loss = (mse_mask * (pred_vitals - tgt_vitals)**2).sum() / mse_mask.sum()
-        preds_vitals = preds[:,:,:-1]
-        preds_infection = preds[:,:,-1]
-        targets_vitals = targets[:,:,:-1]
-        targets_infection = targets[:,:,-1]
-
-        if mask is not None:
-            mask = mask[:,:,:-1].to(self.device)
-
-        loss_mse_per_elem = self.criterion(preds_vitals, targets_vitals)
-        loss_mse = (loss_mse_per_elem * mask).sum() / mask.sum()
+        loss_mse = self.criterion(continuous_preds, continuous_targets)
 
         # Classification loss (Cross Entropy)
-        loss_ce = self.criterion_category(preds_infection, targets_infection)
+        loss_ce = self.criterion_category(category_logits, category_targets)
 
         # Total loss (weighted sum)
         loss = loss_ce + alpha * loss_mse
 
         # return loss
         return loss, {'loss_ce': loss_ce.item(), 'loss_mse': loss_mse.item()}
-
 
     def vali(self, vali_data, vali_loader, return_preds=False):
         self.model.eval()
@@ -391,28 +364,26 @@ class Exp_Informer(Exp_Basic):
         preds_antibio = []
         trues_antibio = []
 
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_mask) in enumerate(vali_loader):
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(vali_loader):
             # Skip empty batches
-            # if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_mask):
-            #     print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in validation")
-            #     continue
+            if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in validation")
+                continue
 
-            pred, true_y = self._process_one_batch(
-                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static)
+            pred, true_y, true_antibio = self._process_one_batch(
+                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             # loss = criterion(pred.detach().cpu(), true.detach().cpu())
-            loss, loss_dict = self.compute_loss(pred, true_y, alpha=self.args.loss_alpha, mask=batch_mask)
-            total_loss.append(loss.detach().cpu().numpy()) # detach() to avoid gradient tracking
+            loss, loss_dict = self.compute_loss(pred[:,:,:-1].detach().cpu(), true_y.detach().cpu(), pred[:,:,-1].detach().cpu(), true_antibio.detach().cpu(), alpha=self.args.loss_alpha)
+            total_loss.append(loss)
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
             total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
 
             if return_preds:
                 pred_np = pred.detach().cpu().numpy()
                 preds_y.append(pred_np[:,:,:-1])
-                # trues_y.append(true_y.detach().cpu().numpy())
-                trues_y.append(true_y.detach().cpu().numpy()[:,:,:-1])
+                trues_y.append(true_y.detach().cpu().numpy())
                 preds_antibio.append(pred_np[:,:,-1])
-                # trues_antibio.append(true_antibio.detach().cpu().numpy())
-                trues_antibio.append(true_y.detach().cpu().numpy()[:,:,-1])
+                trues_antibio.append(true_antibio.detach().cpu().numpy())
                 #keep only the first time point for each patient
                 # ids_y.append(batch_y_id)
                 ids_y.append(batch_y_id[:,0])
@@ -517,22 +488,22 @@ class Exp_Informer(Exp_Basic):
                 unit="batch") as pbar:
                 self.model.train()
                 # epoch_time = time.time()
-                for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_mask) in enumerate(train_loader):
+                for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(train_loader):
                     iter_count += 1
 
-                    # # Skip empty batches
-                    # if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
-                    #     # print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in training (iteration {i+1})")
-                    #     # continue
-                    #     pbar.write(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch ({i+1})")
-                    #     pbar.update(1)
-                    #     continue
+                    # Skip empty batches
+                    if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
+                        # print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in training (iteration {i+1})")
+                        # continue
+                        pbar.write(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch ({i+1})")
+                        pbar.update(1)
+                        continue
 
                     model_optim.zero_grad()
-                    pred, true_y = self._process_one_batch(
-                        train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static)
-                    loss, loss_dict = self.compute_loss(pred, true_y, alpha=self.args.loss_alpha, mask=batch_mask)
-                    train_loss.append(loss.item()) # detach() to avoid gradient tracking
+                    pred, true_y, true_antibio = self._process_one_batch(
+                        train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
+                    loss, loss_dict = self.compute_loss(pred[:,:,:-1], true_y, pred[:,:,-1], true_antibio, alpha=self.args.loss_alpha)
+                    train_loss.append(loss.item())
                     
                     # backward & optimise
                     if self.args.use_amp:
@@ -544,8 +515,7 @@ class Exp_Informer(Exp_Basic):
                         model_optim.step()
 
                     # update tqdm bar and its postfix stats every 100 batches (or every batch—up to you)
-                    # if (i + 1) % 100 == 0:
-                    if (i + 1) % 10 == 0:
+                    if (i + 1) % 100 == 0:
                         pbar.set_postfix({
                             "loss": f"{loss.item():.5f}",
                             "mse": f"{loss_dict['loss_mse']:.5f}",
@@ -701,21 +671,19 @@ class Exp_Informer(Exp_Basic):
         trues_antibio = []
         ids_y = []
 
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_mask) in enumerate(test_loader):
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(test_loader):
             # Skip empty batches
-            # if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
-            #     print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in testing")
-            #     continue
+            if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in testing")
+                continue
 
-            pred, true_y = self._process_one_batch(
-                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static)
+            pred, true_y, true_antibio = self._process_one_batch(
+                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             pred_np = pred.detach().cpu().numpy()
             preds_y.append(pred_np[:,:,:-1])
-            # trues_y.append(true_y.detach().cpu().numpy())
-            trues_y.append(true_y.detach().cpu().numpy()[:,:,:-1])
+            trues_y.append(true_y.detach().cpu().numpy())
             preds_antibio.append(pred_np[:,:,-1])
-            # trues_antibio.append(true_antibio.detach().cpu().numpy())
-            trues_antibio.append(true_y.detach().cpu().numpy()[:,:,-1])
+            trues_antibio.append(true_antibio.detach().cpu().numpy())
             #keep only the first time point for each patient
             # ids_y.append(batch_y_id)
             ids_y.append(batch_y_id[:,0])
@@ -818,14 +786,14 @@ class Exp_Informer(Exp_Basic):
 
         preds = []
 
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_mask) in enumerate(pred_loader):
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark,batch_x_id,batch_y_id,batch_static,batch_antibio) in enumerate(pred_loader):
             # Skip empty batches
-            # if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
-            #     print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in prediction")
-            #     continue
+            if self._is_empty_batch(batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio):
+                print_flush(f"[{time.strftime('%H:%M:%S')}] Skipping empty batch in prediction")
+                continue
 
-            pred, true_y = self._process_one_batch(
-                pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static)
+            pred, true_y, true_antibio = self._process_one_batch(
+                pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static, batch_antibio)
             preds.append(pred.detach().cpu().numpy())
 
         # Safety check to ensure we have predictions before trying to process them
@@ -844,53 +812,7 @@ class Exp_Informer(Exp_Basic):
 
         return
 
-    # def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static=None, batch_antibio=None):
-    #     batch_x = batch_x.float().to(self.device)
-    #     batch_y = batch_y.float()
-
-    #     batch_x_mark = batch_x_mark.float().to(self.device)
-    #     batch_y_mark = batch_y_mark.float().to(self.device)
-
-    #     if batch_static is not None: batch_static = batch_static.float().to(self.device)
-    #     if batch_antibio is not None: batch_antibio = batch_antibio.float()
-
-    #     #Concatenate batch_y (shape: (batch_size, len, 6)) with batch_antibio (shape: (batch_size, len))
-    #     if batch_antibio is not None:
-    #         # batch_label = torch.cat([batch_y, batch_antibio.unsqueeze(-1)], dim=-1)
-    #         batch_label = torch.cat([batch_y, torch.zeros_like(batch_antibio).unsqueeze(-1)], dim=-1)
-    #     else:
-    #         batch_label = batch_y
-    #     #Resulting shape: (batch_size, len, 7)
-
-    #     # decoder input
-    #     if self.args.padding==0:
-    #         dec_inp = torch.zeros([batch_label.shape[0], self.args.pred_len, batch_label.shape[-1]]).float()
-    #     elif self.args.padding==1:
-    #         dec_inp = torch.ones([batch_label.shape[0], self.args.pred_len, batch_label.shape[-1]]).float()
-    #     dec_inp = torch.cat([batch_label[:,:self.args.label_len,:], dec_inp], dim=1).float().to(self.device)
-    #     #Resulting shape: (batch_size, label_len + pred_len, feature_dim)
-
-    #     # encoder - decoder
-    #     if self.args.use_amp:
-    #         with torch.cuda.amp.autocast():
-    #             if self.args.output_attention:
-    #                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)[0]
-    #             else:
-    #                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)
-    #     else:
-    #         if self.args.output_attention:
-    #             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)[0]
-    #         else:
-    #             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, cond=batch_static)
-    #     if self.args.inverse:
-    #         outputs = dataset_object.inverse_transform(outputs)
-    #     f_dim = -1 if self.args.features=='MS' else 0
-    #     batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
-    #     batch_antibio = batch_antibio[:,-self.args.pred_len:].to(self.device) if batch_antibio is not None else None
-
-    #     return outputs, batch_y, batch_antibio
-
-    def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static=None):
+    def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_static=None, batch_antibio=None):
         batch_x = batch_x.float().to(self.device)
         batch_y = batch_y.float()
 
@@ -898,8 +820,15 @@ class Exp_Informer(Exp_Basic):
         batch_y_mark = batch_y_mark.float().to(self.device)
 
         if batch_static is not None: batch_static = batch_static.float().to(self.device)
+        if batch_antibio is not None: batch_antibio = batch_antibio.float()
 
-        batch_label = batch_y
+        #Concatenate batch_y (shape: (batch_size, len, 6)) with batch_antibio (shape: (batch_size, len))
+        if batch_antibio is not None:
+            # batch_label = torch.cat([batch_y, batch_antibio.unsqueeze(-1)], dim=-1)
+            batch_label = torch.cat([batch_y, torch.zeros_like(batch_antibio).unsqueeze(-1)], dim=-1)
+        else:
+            batch_label = batch_y
+        #Resulting shape: (batch_size, len, 7)
 
         # decoder input
         if self.args.padding==0:
@@ -925,5 +854,6 @@ class Exp_Informer(Exp_Basic):
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0
         batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
+        batch_antibio = batch_antibio[:,-self.args.pred_len:].to(self.device) if batch_antibio is not None else None
 
-        return outputs, batch_y
+        return outputs, batch_y, batch_antibio

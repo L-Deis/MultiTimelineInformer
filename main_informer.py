@@ -9,7 +9,7 @@ from utils.logger import print_flush
 #     """Custom print function that ensures immediate output"""
 #     print(*args, **kwargs, flush=True)
 
-print_flush(f"[{time.strftime('%H:%M:%S')}] Starting program...")
+# print_flush(f"[{time.strftime('%H:%M:%S')}] Starting program...")
 from omegaconf import DictConfig, OmegaConf
 import torch
 

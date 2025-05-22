@@ -1,11 +1,9 @@
-model: informerMLP  # model of experiment, options: [informer, informerstack, informerlight(TBD), informerMLP]
+model: informer  # model of experiment, options: [informer, informerstack, informerlight(TBD), informerMLP]
 
-data: eICU  # data
-# root_path_data: "\\chansey.umcn.nl\\pelvis\\projects\\romainandre\\Datasets\\AI-EWS"  # root path for data loading
-# root_path_data: /container/data # root path for data loading
-root_path_data: /Users/lukasdeis/Desktop/eICU data  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis  # root path for data loading
-root_path_save: /Users/lukasdeis/Desktop/eICU data/exp  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis/exp  # root path for saving checkpoints and logs
-use_preprocessed_data: true  # whether to use preprocessed .pkl files instead of raw CSVs
+data: eICU_special  # data
+root_path_data: D:\Users\orosh\Documents\Research\Datasets\eicu-2.0\processed  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis  # root path for data loading
+root_path_save: D:\Users\orosh\Documents\Research\Datasets\eicu-2.0\processed\exp  #Z:/inbox/transfer-2025-03-13-15-24-lukas.deis/exp  # root path for saving checkpoints and logs
+use_preprocessed_data: false  # whether to use preprocessed .pkl files instead of raw CSVs
 use_precollated_data: false  # whether to use pre-collated .pkl files instead of raw CSVs
 # data_path: vitals_data.csv  
 data_path:
@@ -15,13 +13,16 @@ data_path:
   # admissions: admissions_data_prepped.csv  # static data file
   # antibiotics: filtered_antibiotics.csv  # infections data file
   # --- eICU data ---
-  vitals: vitals_data.csv
-  patients: patient_data.csv
-  infections: infection_episodes.csv
+  # vitals: vitals_data.csv
+  # patients: patient_data.csv
+  # infections: infection_episodes.csv
+  # --- eICU special ---
+  vitals: balanced_24h_windows.csv.gz
+  static: static_patient_info.csv.gz
 features: M  # forecasting task, options:[M, S, MS]; M: multivariate → predict multivariate, S: univariate → predict univariate, MS: multivariate → predict univariate
-target: HR  # target feature in S or MS task
+target: null  # target feature in S or MS task
 # freq: t  # freq for time features encoding, e.g. [s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly]; can also use 15min, 3h, etc.
-freq: 5min
+freq: 30min #5min
 data_compress: none #none, skip, mean #TODO: Implement mean
 checkpoints_path: informer_checkpoints  # location of model checkpoints (relative to root_path_save)
 # TODO add and make sure it's processed properly:
@@ -30,22 +31,22 @@ logging_path: logs # location of logs (relative to root_path_save)
 save_every: 1 # save the model every x epochs
 
 # TODO: currently, the value to predict is fetched from the next row
-seq_len: 48 # input sequence length of the Informer encoder (dim 1)
+seq_len: 24 # input sequence length of the Informer encoder (dim 1)
 label_len: 24 # start-token length of the Informer decoder (dim 2)
 # label_len is adapted to utilize a subset of the input instead of the output, so it is okay to use
 # this means it is no longer cheating, but in exchange this is inconsistent with the base-version of the informer
-pred_len: 12   # prediction sequence length (dim 3). Informer decoder input = concat[start token series(label_len), zero padding series(pred_len)]
+pred_len: 24   # prediction sequence length (dim 3). Informer decoder input = concat[start token series(label_len), zero padding series(pred_len)]
 # Informer decoder input: concat[start token series(label_len), zero padding series(pred_len)]
 
-enc_in: 6  # encoder input size
-dec_in: 7 # decoder input size
-c_out: 7   # output size
+enc_in: 19  # encoder input size
+dec_in: 19 # decoder input size
+c_out: 19   # output size
 factor: 5  # ProbSparse attention factor
-d_model: 512  # dimension of the model
+d_model: 256  # dimension of the model
 n_heads: 8  # number of attention heads
-e_layers: 2 #2  # number of encoder layers #TODO: More if cluster
-d_layers: 2 #2  # number of decoder layers #TODO: More if cluster
-d_ff: 2048  # dimension of FCN in the model
+e_layers: 1 #2  # number of encoder layers #TODO: More if cluster
+d_layers: 1 #2  # number of decoder layers #TODO: More if cluster
+d_ff: 256  # dimension of FCN in the model
 dropout: 0.05  # dropout rate
 attn: prob  # attention type in encoder, options: [prob, full]
 embed: timeF  # time features encoding, options: [timeF, fixed, learned]
@@ -60,11 +61,17 @@ mlp_hidden_mul: 4 #hidden size of the MLP
 
 #Conditionning
 condition: true #Whether to condition the model on the static variables
-n_cond_num_in: 1 #How many numerical variables to condition on
+n_cond_num_in: 2 #How many numerical variables to condition on  (age, weight)
 n_cond_num_out: 2 #Embedding size for numerical variables
-n_cond_cat_in: "2" #How many categories for each categorical variable,
+n_cond_cat_in: "5,204,15,8,15" #How many categories for each categorical variable,
   # at least the exact number of categories! More is okay, but slows convergence down
-n_cond_cat_out: "2" #Embedding size for each categorical variable
+n_cond_cat_out: "1,2,1,1,1" #Embedding size for each categorical variable
+
+# Unique categories for gender: 5
+# Unique categories for admit_dx: 204
+# Unique categories for hosp_admit_source: 15
+# Unique categories for unit_type: 8
+# Unique categories for unit_admit_source: 15
 
 #Conditionning
 # condition: true #Whether to condition the model on the static variables
@@ -78,19 +85,19 @@ n_cond_cat_out: "2" #Embedding size for each categorical variable
 s_layers: "3,2,1"
 
 # Training configs
-batch_size: 312 #363
-learning_rate: 0.0005
+batch_size: 64 #363
+learning_rate: 0.0005 #0.0005
 loss: mse #mse
 loss_category: crossentropy
-loss_alpha: 0.3 #how much the mse weights
-loss_pos_weight: 20 #how much the positive class is weighted to tackle class imbalance 5% positive class -> 20 weight
+loss_alpha: 0.25 #how much the mse weights
+loss_pos_weight: 3 #1 #how much the positive class is weighted to tackle class imbalance 5% positive class -> 20 weight
 # no class imbalance? use 1
 lradj: type1
 use_amp: false  # whether to use automatic mixed precision training
 
-num_workers: 0
+num_workers: 4
 itr: 1
-train_epochs: 6
+train_epochs: 1000
 patience: 3
 des: exp
 do_predict: false #TODO: what
