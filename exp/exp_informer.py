@@ -271,13 +271,15 @@ class Exp_Informer(Exp_Basic):
         timeenc = 0 if args.embed!='timeF' else 1
 
         if flag == 'test':
-            shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
+            # shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
+            shuffle_flag = False; drop_last = False; batch_size = args.batch_size; freq=args.freq
         elif flag=='pred':
             # shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.detail_freq
             shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.freq
             # Data = Dataset_Pred # DEBUG: Disable for now
         else:
-            shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
+            # shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
+            shuffle_flag = True; drop_last = False; batch_size = args.batch_size; freq=args.freq
 
         print_flush(f"[{time.strftime('%H:%M:%S')}] Creating dataset with parameters:")
         print_flush(f"    - Root path data: {args.root_path_data}")
@@ -384,6 +386,7 @@ class Exp_Informer(Exp_Basic):
     def vali(self, vali_data, vali_loader, return_preds=False):
         self.model.eval()
         total_loss = []
+        total_loss_weights = []
         total_loss_dict = {"loss_mse": [], "loss_ce": []}
         preds_y = []
         trues_y = []
@@ -402,6 +405,7 @@ class Exp_Informer(Exp_Basic):
             # loss = criterion(pred.detach().cpu(), true.detach().cpu())
             loss, loss_dict = self.compute_loss(pred, true_y, alpha=self.args.loss_alpha, mask=batch_mask)
             total_loss.append(loss.detach().cpu().numpy()) # detach() to avoid gradient tracking
+            total_loss_weights.append(batch_x.size(0))
             total_loss_dict["loss_mse"].append(loss_dict["loss_mse"])
             total_loss_dict["loss_ce"].append(loss_dict["loss_ce"])
 
@@ -417,7 +421,8 @@ class Exp_Informer(Exp_Basic):
                 # ids_y.append(batch_y_id)
                 ids_y.append(batch_y_id[:,0])
 
-        total_loss = np.average(total_loss) if total_loss else 0.0
+        # total_loss = np.average(total_loss) if total_loss else 0.0
+        total_loss = np.average(total_loss, weights=total_loss_weights) if total_loss else 0.0
         total_loss_dict["loss_mse"] = np.average(total_loss_dict["loss_mse"]) if total_loss_dict["loss_mse"] else 0.0
         total_loss_dict["loss_ce"] = np.average(total_loss_dict["loss_ce"]) if total_loss_dict["loss_ce"] else 0.0
         self.model.train()
@@ -596,11 +601,6 @@ class Exp_Informer(Exp_Basic):
                         filename="best_model.pth"
                     )
 
-                early_stopping(vali_loss, self.model, checkpoint_dir)
-                if early_stopping.early_stop:
-                    print_flush("Early stopping")
-                    break
-
                 # Save test predictions and true values for this epoch
                 if preds_y:  # Only save if we have predictions
                     try:
@@ -643,6 +643,17 @@ class Exp_Informer(Exp_Basic):
                         print_flush(f"Saved test results and model checkpoint for epoch {epoch+1} to {epoch_dir}")
                     except Exception as e:
                         print_flush(f"Error saving test results for epoch {epoch+1}: {str(e)}")
+
+                        
+                early_stopping(vali_loss, self.model, checkpoint_dir)
+                if early_stopping.early_stop:
+                    print_flush("Early stopping")
+                    #Create a file that says which epoch was the best and with the losses
+                    with open(os.path.join(checkpoint_dir, 'best_epoch.txt'), 'w') as f:
+                        f.write(f"Best epoch: {epoch+1}\n")
+                        f.write(f"Validation loss: {best_vali_loss:.7f}\n")
+                        f.write(f"Test loss: {test_loss:.7f}\n")
+                    break
 
                 adjust_learning_rate(model_optim, epoch+1, self.args)
 

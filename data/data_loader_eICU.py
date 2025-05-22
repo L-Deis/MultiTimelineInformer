@@ -599,10 +599,12 @@ class Dataset_eICU_special(Dataset):
         # --- STATIC ---
         print("DATALOADER: Start Loading Admissions...")
         df_static = pd.read_csv(os.path.join(self.root_path, self.data_path["static"]),
-                                usecols=['stay_id', 'age', 'weight_kg', 'gender', 'admit_dx', 'hosp_admit_source', 'unit_type', 'unit_admit_source'],
+                                # usecols=['stay_id', 'age', 'weight_kg', 'gender', 'admit_dx', 'hosp_admit_source', 'unit_type', 'unit_admit_source'],
+                                usecols=['stay_id', 'age', 'weight_kg', 'gender', 'hosp_admit_source', 'unit_type', 'unit_admit_source'],
                                 )
         
-        cols_order = ['stay_id', 'age', 'weight_kg', 'gender', 'admit_dx', 'hosp_admit_source', 'unit_type', 'unit_admit_source']
+        # cols_order = ['stay_id', 'age', 'weight_kg', 'gender', 'admit_dx', 'hosp_admit_source', 'unit_type', 'unit_admit_source']
+        cols_order = ['stay_id', 'age', 'weight_kg', 'gender', 'hosp_admit_source', 'unit_type', 'unit_admit_source']
         #Order the columns
         df_static = df_static[cols_order]
 

@@ -63,9 +63,11 @@ mlp_hidden_mul: 4 #hidden size of the MLP
 condition: true #Whether to condition the model on the static variables
 n_cond_num_in: 2 #How many numerical variables to condition on  (age, weight)
 n_cond_num_out: 2 #Embedding size for numerical variables
-n_cond_cat_in: "5,204,15,8,15" #How many categories for each categorical variable,
+# n_cond_cat_in: "5,204,15,8,15" #How many categories for each categorical variable,
+n_cond_cat_in: "5,15,8,15" #How many categories for each categorical variable, #censor admit_dx
   # at least the exact number of categories! More is okay, but slows convergence down
-n_cond_cat_out: "1,2,1,1,1" #Embedding size for each categorical variable
+# n_cond_cat_out: "1,2,1,1,1" #Embedding size for each categorical variable
+n_cond_cat_out: "1,1,1,1" #Embedding size for each categorical variable #censor admit_dx
 
 # Unique categories for gender: 5
 # Unique categories for admit_dx: 204
@@ -98,7 +100,7 @@ use_amp: false  # whether to use automatic mixed precision training
 num_workers: 4
 itr: 1
 train_epochs: 1000
-patience: 3
+patience: 100
 des: exp
 do_predict: false #TODO: what
 inverse: false #TODO: what
