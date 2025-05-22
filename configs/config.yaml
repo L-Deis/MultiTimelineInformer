@@ -42,11 +42,11 @@ enc_in: 19  # encoder input size
 dec_in: 19 # decoder input size
 c_out: 19   # output size
 factor: 5  # ProbSparse attention factor
-d_model: 256  # dimension of the model
+d_model: 512  # dimension of the model
 n_heads: 8  # number of attention heads
 e_layers: 1 #2  # number of encoder layers #TODO: More if cluster
-d_layers: 1 #2  # number of decoder layers #TODO: More if cluster
-d_ff: 256  # dimension of FCN in the model
+d_layers: 2 #2  # number of decoder layers #TODO: More if cluster
+d_ff: 512  # dimension of FCN in the model
 dropout: 0.05  # dropout rate
 attn: prob  # attention type in encoder, options: [prob, full]
 embed: timeF  # time features encoding, options: [timeF, fixed, learned]

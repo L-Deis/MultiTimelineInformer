@@ -601,6 +601,11 @@ class Exp_Informer(Exp_Basic):
                         filename="best_model.pth"
                     )
 
+                    with open(os.path.join(checkpoint_dir, 'best_epoch.txt'), 'w') as f:
+                        f.write(f"Best epoch: {epoch+1}\n")
+                        f.write(f"Validation loss: {best_vali_loss:.7f}\n")
+                        f.write(f"Test loss: {test_loss:.7f}\n")
+
                 # Save test predictions and true values for this epoch
                 if preds_y:  # Only save if we have predictions
                     try:
@@ -649,10 +654,10 @@ class Exp_Informer(Exp_Basic):
                 if early_stopping.early_stop:
                     print_flush("Early stopping")
                     #Create a file that says which epoch was the best and with the losses
-                    with open(os.path.join(checkpoint_dir, 'best_epoch.txt'), 'w') as f:
-                        f.write(f"Best epoch: {epoch+1}\n")
-                        f.write(f"Validation loss: {best_vali_loss:.7f}\n")
-                        f.write(f"Test loss: {test_loss:.7f}\n")
+                    # with open(os.path.join(checkpoint_dir, 'best_epoch.txt'), 'w') as f:
+                    #     f.write(f"Best epoch: {epoch+1}\n")
+                    #     f.write(f"Validation loss: {best_vali_loss:.7f}\n")
+                    #     f.write(f"Test loss: {test_loss:.7f}\n")
                     break
 
                 adjust_learning_rate(model_optim, epoch+1, self.args)
